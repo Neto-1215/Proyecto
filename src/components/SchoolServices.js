@@ -11,6 +11,7 @@ const CATALOGO = [
   { id: 'TRM-05', titulo: 'Actualización de datos personales', costo: 'Sin costo', entrega: '2 días hábiles', roles: ['estudiante', 'profesor', 'aspirante', 'coordinador'] },
 ];
 
+const TIPO_INSCRIPCION = 'Inscripción a curso';
 const ESTADOS_TRAMITE = ['Solicitado', 'En proceso', 'Entregado', 'Rechazado'];
 
 const tonoTramite = (e) =>
@@ -22,16 +23,23 @@ const nombreDe = (u) => (u ? `${u.nombre || ''} ${u.apellidos || ''}`.trim() || 
 export default function SchoolServices() {
   const { rol, user, profile } = useAuth();
   const atiende = ['superadmin', 'administrador', 'soporte'].includes(rol);
+  const esEstudiante = rol === 'estudiante';
 
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
 
-  // Solicitante
+  // Solicitante — trámites del catálogo
   const [abierto, setAbierto] = useState(null);
   const [detalle, setDetalle] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // Solicitante — inscripción a cursos
+  const [cursosDisp, setCursosDisp] = useState([]);
+  const [misCursosIds, setMisCursosIds] = useState(new Set());
+  const [cargandoCursos, setCargandoCursos] = useState(true);
+  const [enviandoId, setEnviandoId] = useState(null);
 
   // Atención
   const [filtro, setFiltro] = useState('abiertos');
@@ -43,7 +51,7 @@ export default function SchoolServices() {
     setErr('');
     const { data, error } = await supabase
       .from('tramites')
-      .select('id,tipo,detalle,estado,respuesta,created_at,usuario:profiles(nombre,apellidos,email,rol)')
+      .select('id,tipo,detalle,estado,respuesta,created_at,curso_id,usuario:profiles(nombre,apellidos,email,rol)')
       .order('created_at', { ascending: false });
     if (error) setErr(error.message);
     else setRows(data || []);
@@ -52,7 +60,50 @@ export default function SchoolServices() {
 
   useEffect(() => { load(); }, [load]);
 
-  /* ---------- Solicitante ---------- */
+  /* ---------- Cursos disponibles para solicitar inscripción ---------- */
+  const loadCursos = useCallback(async () => {
+    if (!esEstudiante) { setCargandoCursos(false); return; }
+    setCargandoCursos(true);
+    const [c, m] = await Promise.all([
+      supabase.from('cursos').select('id,nombre,programa,moodle_course_id').eq('activo', true).not('moodle_course_id', 'is', null).order('nombre'),
+      supabase.from('matriculas').select('curso_id'),
+    ]);
+    if (!c.error) setCursosDisp(c.data || []);
+    if (!m.error) setMisCursosIds(new Set((m.data || []).map((x) => x.curso_id)));
+    setCargandoCursos(false);
+  }, [esEstudiante]);
+
+  useEffect(() => { loadCursos(); }, [loadCursos]);
+
+  const idsConSolicitudAbierta = useMemo(
+    () =>
+      new Set(
+        rows
+          .filter((r) => r.tipo === TIPO_INSCRIPCION && ['Solicitado', 'En proceso'].includes(r.estado))
+          .map((r) => r.curso_id)
+      ),
+    [rows]
+  );
+
+  const cursosParaSolicitar = cursosDisp.filter((c) => !misCursosIds.has(c.id));
+
+  const solicitarInscripcion = async (curso) => {
+    setEnviandoId(curso.id);
+    setMsg('');
+    setErr('');
+    const { error } = await supabase
+      .from('tramites')
+      .insert([{ user_id: user.id, tipo: TIPO_INSCRIPCION, detalle: curso.nombre, curso_id: curso.id }]);
+
+    if (error) setErr(error.message);
+    else {
+      setMsg('Solicitud de inscripción enviada. Un administrador la revisará y te dará acceso al curso.');
+      load();
+    }
+    setEnviandoId(null);
+  };
+
+  /* ---------- Solicitante — catálogo de trámites ---------- */
   const tiposAbiertos = useMemo(
     () => new Set(rows.filter((r) => ['Solicitado', 'En proceso'].includes(r.estado)).map((r) => r.tipo)),
     [rows]
@@ -172,34 +223,48 @@ export default function SchoolServices() {
                       {r.detalle && <small>{r.detalle}</small>}
                     </td>
                     <td>{fecha(r.created_at)}</td>
-                    <td>
-                      <select
-                        className="select"
-                        value={valor(r, 'estado')}
-                        onChange={(e) => cambiar(r.id, 'estado', e.target.value)}
-                      >
-                        {ESTADOS_TRAMITE.map((s) => <option key={s} value={s}>{s}</option>)}
-                      </select>
-                    </td>
-                    <td>
-                      <input
-                        className="input-sm"
-                        placeholder="Mensaje para el solicitante"
-                        value={valor(r, 'respuesta')}
-                        onChange={(e) => cambiar(r.id, 'respuesta', e.target.value)}
-                      />
-                    </td>
-                    <td>
-                      {drafts[r.id] && (
-                        <button
-                          className="btn btn--primary btn--xs"
-                          disabled={savingId === r.id}
-                          onClick={() => guardar(r)}
-                        >
-                          {savingId === r.id ? 'Guardando…' : 'Guardar'}
-                        </button>
-                      )}
-                    </td>
+                    {r.tipo === TIPO_INSCRIPCION ? (
+                      <>
+                        <td colSpan={2}>
+                          <span className={`badge ${tonoTramite(r.estado)}`}>{r.estado}</span>{' '}
+                          <small className="hint" style={{ margin: 0, display: 'inline' }}>
+                            Se gestiona desde Inscripciones
+                          </small>
+                        </td>
+                        <td />
+                      </>
+                    ) : (
+                      <>
+                        <td>
+                          <select
+                            className="select"
+                            value={valor(r, 'estado')}
+                            onChange={(e) => cambiar(r.id, 'estado', e.target.value)}
+                          >
+                            {ESTADOS_TRAMITE.map((s) => <option key={s} value={s}>{s}</option>)}
+                          </select>
+                        </td>
+                        <td>
+                          <input
+                            className="input-sm"
+                            placeholder="Mensaje para el solicitante"
+                            value={valor(r, 'respuesta')}
+                            onChange={(e) => cambiar(r.id, 'respuesta', e.target.value)}
+                          />
+                        </td>
+                        <td>
+                          {drafts[r.id] && (
+                            <button
+                              className="btn btn--primary btn--xs"
+                              disabled={savingId === r.id}
+                              onClick={() => guardar(r)}
+                            >
+                              {savingId === r.id ? 'Guardando…' : 'Guardar'}
+                            </button>
+                          )}
+                        </td>
+                      </>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -210,7 +275,7 @@ export default function SchoolServices() {
         <p className="hint">
           {rol === 'soporte'
             ? 'Como Soporte atiendes solicitudes de estudiantes y aspirantes, sin privilegios académicos.'
-            : 'Aquí atiendes las solicitudes de trámites de los usuarios.'}
+            : 'Aquí atiendes las solicitudes de trámites de los usuarios. Las inscripciones a cursos se aprueban desde Inscripciones, para que el acceso se otorgue de verdad.'}
         </p>
       </div>
     );
@@ -232,7 +297,45 @@ export default function SchoolServices() {
       {msg && <div className="alert alert--ok">{msg}</div>}
       {err && <div className="alert alert--error">{err}</div>}
 
-      <div className="dash-section">
+      {esEstudiante && (
+        <div className="dash-section">
+          <h3>Solicitar inscripción a un curso</h3>
+          {cargandoCursos ? (
+            <div className="empty">Cargando cursos disponibles…</div>
+          ) : cursosParaSolicitar.length === 0 ? (
+            <div className="empty">Ya estás inscrito en todos los cursos disponibles, o no hay cursos abiertos por ahora.</div>
+          ) : (
+            <div className="service-list">
+              {cursosParaSolicitar.map((c) => {
+                const yaAbierto = idsConSolicitudAbierta.has(c.id);
+                return (
+                  <div className="service-item" key={c.id}>
+                    <div className="service-item__top">
+                      <div>
+                        <h4>{c.nombre}</h4>
+                        <small>{c.programa || 'Sin programa'} · Costo: se confirma con administración al autorizar tu solicitud</small>
+                      </div>
+                      {yaAbierto ? (
+                        <span className="badge badge--warn">Solicitud en revisión</span>
+                      ) : (
+                        <button
+                          className="btn btn--primary btn--xs"
+                          disabled={enviandoId === c.id}
+                          onClick={() => solicitarInscripcion(c)}
+                        >
+                          {enviandoId === c.id ? 'Enviando…' : 'Solicitar inscripción'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="dash-section" style={{ marginTop: esEstudiante ? 32 : 0 }}>
         <h3>Solicitar un trámite</h3>
         {catalogo.length === 0 ? (
           <div className="empty">Tu rol no tiene trámites disponibles por ahora.</div>

@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { canManageEnrollments } from '../lib/permissions';
 
 const MOODLE_URL = process.env.REACT_APP_MOODLE_URL;
+const TIPO_INSCRIPCION = 'Inscripción a curso';
 
 const badgeMoodle = (e) =>
   e === 'Sincronizada' ? 'badge--ok' : e === 'Error' ? 'badge--bad' : 'badge--warn';
@@ -22,6 +23,7 @@ export default function CourseAccess() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [busyId, setBusyId] = useState(null);
+  const [solicitudes, setSolicitudes] = useState([]);
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
 
@@ -52,11 +54,80 @@ export default function CourseAccess() {
       ]);
       if (!c.error) setCursos(c.data || []);
       if (!p.error) setPersonas(p.data || []);
+
+      const s = await supabase
+        .from('tramites')
+        .select('id,detalle,estado,created_at,user_id,curso_id,usuario:profiles(id,nombre,apellidos,email,rol)')
+        .eq('tipo', TIPO_INSCRIPCION)
+        .in('estado', ['Solicitado', 'En proceso'])
+        .order('created_at', { ascending: true });
+      if (!s.error) setSolicitudes(s.data || []);
     }
     setLoading(false);
   }, [gestiona]);
 
   useEffect(() => { load(); }, [load]);
+
+  const aprobarSolicitud = async (sol) => {
+    if (!sol.user_id || !sol.curso_id) {
+      setErr('La solicitud no tiene usuario o curso asociado.');
+      return;
+    }
+    setBusyId(sol.id);
+    setMsg('');
+    setErr('');
+
+    const rol_moodle = sol.usuario?.rol === 'profesor' ? 'teacher' : 'student';
+    const { data: nueva, error } = await supabase
+      .from('matriculas')
+      .insert([{ user_id: sol.user_id, curso_id: sol.curso_id, rol_moodle }])
+      .select('id')
+      .single();
+
+    // 23505 = ya estaba matriculado: igual cerramos la solicitud
+    if (error && error.code !== '23505') {
+      setErr(error.message);
+      setBusyId(null);
+      return;
+    }
+
+    let aviso = 'Solicitud aprobada y matrícula sincronizada con Moodle.';
+    if (error) {
+      aviso = 'El usuario ya estaba matriculado; la solicitud se cerró.';
+    } else {
+      try {
+        await api('/api/moodle/enrol', { method: 'POST', body: { matricula_id: nueva.id } });
+      } catch (e2) {
+        aviso = `Solicitud aprobada y matrícula guardada, pero falló la sincronización con Moodle: ${e2.message}. Usa "Sincronizar" para reintentar.`;
+      }
+    }
+
+    const { error: e3 } = await supabase
+      .from('tramites')
+      .update({ estado: 'Entregado', respuesta: 'Inscripción aprobada. Ya tienes acceso al curso.' })
+      .eq('id', sol.id);
+    if (e3) setErr(`La matrícula se creó, pero no se pudo cerrar la solicitud: ${e3.message}`);
+    else setMsg(aviso);
+
+    setBusyId(null);
+    load();
+  };
+
+  const rechazarSolicitud = async (sol) => {
+    const motivo = window.prompt('Motivo del rechazo (opcional):', '');
+    if (motivo === null) return;
+    setBusyId(sol.id);
+    setMsg('');
+    setErr('');
+    const { error } = await supabase
+      .from('tramites')
+      .update({ estado: 'Rechazado', respuesta: motivo.trim() || 'Solicitud de inscripción rechazada.' })
+      .eq('id', sol.id);
+    if (error) setErr(error.message);
+    else setMsg('Solicitud rechazada.');
+    setBusyId(null);
+    load();
+  };
 
   const matricular = async (e) => {
     e.preventDefault();
@@ -139,6 +210,53 @@ export default function CourseAccess() {
     <div>
       {msg && <div className="alert alert--ok">{msg}</div>}
       {err && <div className="alert alert--error">{err}</div>}
+
+      {gestiona && solicitudes.length > 0 && (
+        <div className="dash-section" style={{ marginBottom: 24 }}>
+          <h3>Solicitudes de inscripción pendientes ({solicitudes.length})</h3>
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Solicitante</th>
+                  <th>Curso</th>
+                  <th>Fecha</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {solicitudes.map((s) => (
+                  <tr key={s.id}>
+                    <td className="who">
+                      <strong>{nombre(s.usuario)}</strong>
+                      <small>{s.usuario?.email || ''}</small>
+                    </td>
+                    <td>{cursos.find((c) => c.id === s.curso_id)?.nombre || s.detalle || '—'}</td>
+                    <td>{new Date(s.created_at).toLocaleDateString('es-MX')}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      <button
+                        className="btn btn--primary btn--xs"
+                        disabled={busyId === s.id}
+                        onClick={() => aprobarSolicitud(s)}
+                        style={{ marginRight: 8 }}
+                      >
+                        {busyId === s.id ? '…' : 'Aprobar'}
+                      </button>
+                      <button
+                        className="btn btn--light btn--xs"
+                        disabled={busyId === s.id}
+                        onClick={() => rechazarSolicitud(s)}
+                      >
+                        Rechazar
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {gestiona && (
         <form className="enroll-form" onSubmit={matricular}>
