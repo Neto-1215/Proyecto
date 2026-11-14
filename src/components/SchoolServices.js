@@ -65,7 +65,7 @@ export default function SchoolServices() {
     if (!esEstudiante) { setCargandoCursos(false); return; }
     setCargandoCursos(true);
     const [c, m] = await Promise.all([
-      supabase.from('cursos').select('id,nombre,programa,moodle_course_id').eq('activo', true).not('moodle_course_id', 'is', null).order('nombre'),
+      supabase.from('cursos').select('id,nombre,programa,moodle_course_id,precio').eq('activo', true).not('moodle_course_id', 'is', null).order('nombre'),
       supabase.from('matriculas').select('curso_id'),
     ]);
     if (!c.error) setCursosDisp(c.data || []);
@@ -93,7 +93,7 @@ export default function SchoolServices() {
     setErr('');
     const { error } = await supabase
       .from('tramites')
-      .insert([{ user_id: user.id, tipo: TIPO_INSCRIPCION, detalle: curso.nombre, curso_id: curso.id }]);
+      .insert([{ user_id: user.id, tipo: TIPO_INSCRIPCION, detalle: curso.nombre, curso_id: curso.id, monto: curso.precio ?? null }]);
 
     if (error) setErr(error.message);
     else {
@@ -313,7 +313,10 @@ export default function SchoolServices() {
                     <div className="service-item__top">
                       <div>
                         <h4>{c.nombre}</h4>
-                        <small>{c.programa || 'Sin programa'} · Costo: se confirma con administración al autorizar tu solicitud</small>
+                        <small>
+                          {c.programa || 'Sin programa'} · Costo:{' '}
+                          <strong>{c.precio != null ? `$${Number(c.precio).toFixed(2)} MXN` : 'Por confirmar'}</strong>
+                        </small>
                       </div>
                       {yaAbierto ? (
                         <span className="badge badge--warn">Solicitud en revisión</span>

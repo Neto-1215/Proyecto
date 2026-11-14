@@ -1,10 +1,14 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
+import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { ROLES, canManageUsers } from '../lib/permissions';
 
+const TIPO_INSCRIPCION = 'Inscripción a curso';
+
 const fecha = (iso) => (iso ? new Date(iso).toLocaleDateString('es-MX') : '—');
-const nombreDe = (u) => `${u.nombre || ''} ${u.apellidos || ''}`.trim() || u.email;
+const nombreDe = (u) => `${u?.nombre || ''} ${u?.apellidos || ''}`.trim() || u?.email || '—';
+const dinero = (n) => (n != null ? `$${Number(n).toFixed(2)} MXN` : null);
 
 export default function CourseEnrollment({ onNavigate }) {
   const { rol, can } = useAuth();
@@ -12,9 +16,11 @@ export default function CourseEnrollment({ onNavigate }) {
 
   const [pend, setPend] = useState([]);
   const [sinMat, setSinMat] = useState([]);
+  const [solCursos, setSolCursos] = useState([]);
   const [drafts, setDrafts] = useState({});
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
+  const [busyCursoId, setBusyCursoId] = useState(null);
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
 
@@ -22,7 +28,7 @@ export default function CourseEnrollment({ onNavigate }) {
     setLoading(true);
     setErr('');
 
-    const [p, a, m] = await Promise.all([
+    const [p, a, m, sc] = await Promise.all([
       supabase
         .from('profiles')
         .select('id,nombre,apellidos,email,rol,programa,created_at')
@@ -35,6 +41,12 @@ export default function CourseEnrollment({ onNavigate }) {
         .in('rol', ['estudiante', 'profesor'])
         .order('nombre'),
       supabase.from('matriculas').select('user_id'),
+      supabase
+        .from('tramites')
+        .select('id,detalle,created_at,curso_id,monto,usuario:profiles(id,nombre,apellidos,email,rol,estado),curso:cursos(id,nombre,moodle_course_id,precio)')
+        .eq('tipo', TIPO_INSCRIPCION)
+        .in('estado', ['Solicitado', 'En proceso'])
+        .order('created_at', { ascending: false }),
     ]);
 
     if (p.error) setErr(p.error.message);
@@ -44,6 +56,10 @@ export default function CourseEnrollment({ onNavigate }) {
       const conMatricula = new Set((m.data || []).map((x) => x.user_id));
       setSinMat((a.data || []).filter((u) => !conMatricula.has(u.id)));
     }
+
+    if (sc.error) setErr(sc.error.message);
+    else setSolCursos(sc.data || []);
+
     setLoading(false);
   }, []);
 
@@ -105,6 +121,85 @@ export default function CourseEnrollment({ onNavigate }) {
       load();
     }
     setBusyId(null);
+  };
+
+  /* ---------- Solicitudes de inscripción pagada ---------- */
+  const aprobarInscripcion = async (s) => {
+    if (s.usuario?.estado !== 'Activo') {
+      setErr('Primero autoriza la cuenta de este usuario en "Solicitudes de admisión".');
+      return;
+    }
+    if (!s.curso?.id) {
+      setErr('El curso de esta solicitud ya no existe. Rechaza la solicitud.');
+      return;
+    }
+
+    setBusyCursoId(s.id);
+    setMsg('');
+    setErr('');
+
+    const rol_moodle = s.usuario.rol === 'profesor' ? 'teacher' : 'student';
+    const { data: nueva, error } = await supabase
+      .from('matriculas')
+      .insert([{ user_id: s.usuario.id, curso_id: s.curso.id, rol_moodle }])
+      .select('id')
+      .single();
+
+    let matriculaId = nueva?.id;
+
+    if (error) {
+      if (error.code === '23505') {
+        // Ya estaba matriculado: toma la matrícula existente para sincronizarla
+        const existente = await supabase
+          .from('matriculas')
+          .select('id')
+          .eq('user_id', s.usuario.id)
+          .eq('curso_id', s.curso.id)
+          .maybeSingle();
+        matriculaId = existente.data?.id;
+      } else {
+        setErr(error.message);
+        setBusyCursoId(null);
+        return;
+      }
+    }
+
+    let avisoMoodle = '';
+    if (matriculaId) {
+      try {
+        await api('/api/moodle/enrol', { method: 'POST', body: { matricula_id: matriculaId } });
+      } catch (e) {
+        avisoMoodle = ` (la matrícula se guardó, pero no se sincronizó con Moodle: ${e.message}. Puedes reintentarlo en "Mis cursos")`;
+      }
+    }
+
+    const { error: errTramite } = await supabase
+      .from('tramites')
+      .update({ estado: 'Entregado', respuesta: 'Acceso otorgado al curso.' })
+      .eq('id', s.id);
+    if (errTramite) setErr(errTramite.message);
+
+    setMsg(`Se otorgó acceso de ${nombreDe(s.usuario)} al curso "${s.curso.nombre}".${avisoMoodle}`);
+    setBusyCursoId(null);
+    load();
+  };
+
+  const rechazarInscripcion = async (s) => {
+    if (!window.confirm(`¿Rechazar la solicitud de inscripción de ${nombreDe(s.usuario)}?`)) return;
+    setBusyCursoId(s.id);
+    setMsg('');
+    setErr('');
+    const { error } = await supabase
+      .from('tramites')
+      .update({ estado: 'Rechazado', respuesta: 'Solicitud de inscripción rechazada.' })
+      .eq('id', s.id);
+
+    if (error) setErr(error.message);
+    else {
+      setMsg('Solicitud de inscripción rechazada.');
+      load();
+    }
+    setBusyCursoId(null);
   };
 
   if (loading) return <div className="empty">Cargando solicitudes…</div>;
@@ -192,6 +287,51 @@ export default function CourseEnrollment({ onNavigate }) {
       </div>
 
       <div className="dash-section" style={{ marginTop: 32 }}>
+        <h3>Solicitudes de inscripción pagada</h3>
+        {solCursos.length === 0 ? (
+          <div className="empty">No hay solicitudes de inscripción pendientes.</div>
+        ) : (
+          <ul className="pending-list">
+            {solCursos.map((s) => {
+              const costo = dinero(s.monto ?? s.curso?.precio);
+              return (
+                <li key={s.id}>
+                  <div>
+                    <strong>{nombreDe(s.usuario)}</strong>
+                    <small>
+                      {s.usuario?.email} · solicita <strong>{s.curso?.nombre || s.detalle || 'curso eliminado'}</strong>
+                      {costo && <> · a pagar: <strong>{costo}</strong></>}
+                      {' '}· {fecha(s.created_at)}
+                    </small>
+                  </div>
+                  {puede ? (
+                    <div style={{ display: 'flex', gap: 8, whiteSpace: 'nowrap' }}>
+                      <button
+                        className="btn btn--primary btn--xs"
+                        disabled={busyCursoId === s.id}
+                        onClick={() => aprobarInscripcion(s)}
+                      >
+                        {busyCursoId === s.id ? '…' : 'Aprobar y matricular'}
+                      </button>
+                      <button
+                        className="btn btn--light btn--xs"
+                        disabled={busyCursoId === s.id}
+                        onClick={() => rechazarInscripcion(s)}
+                      >
+                        Rechazar
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="badge badge--warn">Pendiente</span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+
+      <div className="dash-section" style={{ marginTop: 32 }}>
         <h3>Autorizados sin matrícula</h3>
         {sinMat.length === 0 ? (
           <div className="empty">Todos los usuarios autorizados ya tienen al menos un curso.</div>
@@ -221,7 +361,7 @@ export default function CourseEnrollment({ onNavigate }) {
 
       <p className="hint">
         {puede
-          ? 'Al autorizar, el usuario pasa a estado Activo con el rol y el programa elegidos. Después se le matricula en Mis cursos.'
+          ? 'Al autorizar, el usuario pasa a estado Activo con el rol y el programa elegidos. Al aprobar una inscripción pagada, se le matricula y se sincroniza con Moodle automáticamente.'
           : 'Vista de solo lectura, limitada a tu ámbito.'}
       </p>
     </div>
