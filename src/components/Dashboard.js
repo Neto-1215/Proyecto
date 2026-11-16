@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { ROLES } from '../lib/permissions';
 import { abrirCampus } from '../lib/campus';
@@ -87,6 +88,7 @@ export default function Dashboard({ onNavigate }) {
   const [stats, setStats] = useState({ usuarios: 0, pendientes: 0, cursos: 0, errores: 0 });
   const [pendientes, setPendientes] = useState([]);
   const [err, setErr] = useState('');
+  const [grades, setGrades] = useState({});
 
   const ir = (tab) => {
     if (onNavigate && can(tab)) onNavigate(tab);
@@ -147,6 +149,19 @@ export default function Dashboard({ onNavigate }) {
     return () => { activo = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rol]);
+
+  useEffect(() => {
+    if (rol !== 'estudiante') return;
+    mats.forEach((m) => {
+      if (m.moodle_estado === 'Sincronizada' && m.curso?.moodle_course_id && grades[m.id] === undefined) {
+        setGrades((g) => ({ ...g, [m.id]: 'cargando' }));
+        api(`/api/moodle/grade/${m.id}`)
+          .then((d) => setGrades((g) => ({ ...g, [m.id]: d.calificacion || 'Aún sin calificar' })))
+          .catch(() => setGrades((g) => ({ ...g, [m.id]: 'No disponible' })));
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mats, rol]);
 
   const nombre = profile?.nombre || 'bienvenido';
   const rolLabel = rol ? ROLES[rol]?.label : '';
@@ -249,6 +264,32 @@ export default function Dashboard({ onNavigate }) {
                 <div className="empty-state">
                   <EmptyArt />
                   <p>Todavía no tienes cursos asignados. Tu acceso depende de una matrícula autorizada.</p>
+                </div>
+              ) : rol === 'estudiante' ? (
+                <div className="table-wrap">
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Curso</th>
+                        <th>Calificación</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {mats.slice(0, 3).map((m) => (
+                        <tr key={m.id}>
+                          <td className="who">
+                            <strong>{m.curso?.nombre}</strong>
+                            <small>{m.curso?.programa || 'Sin programa'}</small>
+                          </td>
+                          <td>
+                            <span className="badge">
+                              {grades[m.id] === undefined || grades[m.id] === 'cargando' ? 'Cargando…' : grades[m.id]}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               ) : (
                 <div className="course-grid">
