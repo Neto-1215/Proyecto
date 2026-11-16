@@ -1,6 +1,8 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const { createClient } = require('@supabase/supabase-js');
 const { moodle, asegurarUsuarioMoodle, ROLES_MOODLE } = require('./moodle');
 
@@ -9,6 +11,7 @@ const {
   SUPABASE_SERVICE_ROLE_KEY,
   FRONTEND_URL = 'http://localhost:3000',
   PORT = 4000,
+  REQUIRE_MFA = 'true', // exige sesión con segundo factor (aal2). Solo desactívalo en desarrollo.
 } = process.env;
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -19,37 +22,85 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
 const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 
 const app = express();
-app.use(cors({ origin: FRONTEND_URL }));
-app.use(express.json());
+app.disable('x-powered-by');
+app.set('trust proxy', 1);
+app.use(helmet());
+app.use(cors({ origin: FRONTEND_URL, methods: ['GET', 'POST', 'PATCH', 'DELETE'], allowedHeaders: ['Content-Type', 'Authorization'] }));
+app.use(express.json({ limit: '20kb' }));
 
-/* ---------- Seguridad: valida la sesión de Supabase y el rol ---------- */
+// Límite general por IP y uno más estricto para acciones que escriben o llaman a Moodle
+app.use(rateLimit({ windowMs: 60_000, limit: 120, standardHeaders: true, legacyHeaders: false }));
+const limiteEscritura = rateLimit({
+  windowMs: 60_000,
+  limit: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Demasiadas solicitudes. Espera un momento.' },
+});
+
+/* ---------- Utilidades ---------- */
+class HttpError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const esUuid = (v) => typeof v === 'string' && UUID_RE.test(v);
+const exigirUuid = (v, campo) => {
+  if (!esUuid(v)) throw new HttpError(400, `${campo} no es válido.`);
+  return v;
+};
+// IDs de tablas de la app: UUID o entero positivo (según cómo se crearon las tablas)
+const exigirId = (v, campo) => {
+  if (esUuid(v)) return v;
+  if ((typeof v === 'number' || typeof v === 'string') && /^\d{1,15}$/.test(String(v))) return String(v);
+  throw new HttpError(400, `${campo} no es válido.`);
+};
+
+// Lee el nivel de autenticación (aal) del JWT. El token ya fue validado por Supabase en getUser().
+function aalDelToken(token) {
+  try {
+    const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8'));
+    return payload.aal;
+  } catch {
+    return null;
+  }
+}
+
+/* ---------- Seguridad: valida la sesión de Supabase, el segundo factor y el rol ---------- */
 async function auth(req, res, next) {
   try {
-    const token = (req.headers.authorization || '').replace('Bearer ', '').trim();
+    const cabecera = req.headers.authorization || '';
+    const token = cabecera.startsWith('Bearer ') ? cabecera.slice(7).trim() : '';
     if (!token) return res.status(401).json({ error: 'Falta la sesión. Inicia sesión de nuevo.' });
 
     const { data, error } = await sb.auth.getUser(token);
     if (error || !data?.user) return res.status(401).json({ error: 'Sesión inválida o vencida.' });
 
+    // Sin el segundo factor verificado no hay acceso a la API (evita saltarse el MFA del frontend)
+    if (REQUIRE_MFA !== 'false' && aalDelToken(token) !== 'aal2') {
+      return res.status(401).json({ error: 'Falta la verificación en dos pasos. Inicia sesión de nuevo.' });
+    }
+
     const { data: perfil, error: perfilError } = await sb
       .from('profiles')
-      .select('id,rol,estado,email')
+      .select('id,rol,estado,email,ambito')
       .eq('id', data.user.id)
       .maybeSingle();
 
     if (perfilError) {
-      return res.status(500).json({ error: `No se pudo leer tu perfil: ${perfilError.message}` });
+      console.error('auth: error leyendo perfil:', perfilError.message);
+      return res.status(500).json({ error: 'No se pudo leer tu perfil.' });
     }
-    if (!perfil) {
-      return res.status(403).json({
-        error: 'Tu usuario no tiene perfil. Revisa que SUPABASE_SERVICE_ROLE_KEY sea la clave service_role o secret.',
-      });
-    }
+    if (!perfil) return res.status(403).json({ error: 'Tu usuario no tiene perfil.' });
 
     req.user = perfil;
     next();
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error('auth:', e);
+    res.status(500).json({ error: 'Error interno' });
   }
 }
 
@@ -60,14 +111,52 @@ const requireRol = (...roles) => (req, res, next) =>
 
 const soloAdmin = requireRol('superadmin', 'administrador');
 
-// Captura errores de funciones async
+// Captura errores de funciones async. Los errores internos no se muestran al cliente.
 const ah = (fn) => (req, res) =>
-  fn(req, res).catch((e) => res.status(500).json({ error: e.message || 'Error interno' }));
+  fn(req, res).catch((e) => {
+    if (e instanceof HttpError) return res.status(e.status).json({ error: e.message });
+    console.error(`${req.method} ${req.path}:`, e);
+    res.status(500).json({ error: 'Error interno del servidor.' });
+  });
 
 const MATRICULA_SELECT =
   'id,user_id,rol_moodle,estado,moodle_estado,' +
   'curso:cursos(id,nombre,moodle_course_id),' +
   'perfil:profiles(id,email,nombre,apellidos,rol,estado,moodle_user_id)';
+
+const ROLES_VALIDOS = ['superadmin', 'administrador', 'coordinador', 'profesor', 'estudiante', 'aspirante', 'soporte'];
+const ESTADOS_VALIDOS = ['Pendiente', 'Activo', 'Suspendido'];
+const ROLES_ASIGNABLES = {
+  superadmin: ROLES_VALIDOS,
+  administrador: ['coordinador', 'profesor', 'estudiante', 'aspirante', 'soporte'],
+};
+const TIPO_INSCRIPCION = 'Inscripción a curso';
+
+const texto = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
+
+// Matricula en Moodle una matrícula existente y guarda el resultado
+async function sincronizarMatricula(m) {
+  try {
+    const moodleId = await asegurarUsuarioMoodle(m.perfil);
+
+    if (String(m.perfil.moodle_user_id) !== String(moodleId)) {
+      await sb.from('profiles').update({ moodle_user_id: String(moodleId) }).eq('id', m.perfil.id);
+    }
+
+    await moodle('enrol_manual_enrol_users', {
+      enrolments: [{ roleid: ROLES_MOODLE[m.rol_moodle], userid: moodleId, courseid: m.curso.moodle_course_id }],
+    });
+
+    await sb.from('matriculas').update({ moodle_estado: 'Sincronizada', moodle_error: null }).eq('id', m.id);
+    return moodleId;
+  } catch (e) {
+    await sb
+      .from('matriculas')
+      .update({ moodle_estado: 'Error', moodle_error: String(e.message).slice(0, 300) })
+      .eq('id', m.id);
+    throw new HttpError(502, 'No se pudo sincronizar con Moodle. Revisa la conexión e inténtalo de nuevo.');
+  }
+}
 
 /* ---------- Rutas ---------- */
 
@@ -96,15 +185,25 @@ app.get('/api/moodle/courses', auth, soloAdmin, ah(async (req, res) => {
   );
 }));
 
-// Importa cursos de Moodle a la tabla cursos
-app.post('/api/moodle/import-courses', auth, soloAdmin, ah(async (req, res) => {
-  const { cursos = [], programa = null } = req.body || {};
-  if (!cursos.length) return res.status(400).json({ error: 'No elegiste ningún curso.' });
+// Importa cursos de Moodle a la tabla cursos (el nombre se toma de Moodle, no del cliente)
+app.post('/api/moodle/import-courses', auth, soloAdmin, limiteEscritura, ah(async (req, res) => {
+  const { cursos, programa } = req.body || {};
+  if (!Array.isArray(cursos) || cursos.length === 0) throw new HttpError(400, 'No elegiste ningún curso.');
+  if (cursos.length > 200) throw new HttpError(400, 'Demasiados cursos en una sola importación.');
 
-  const filas = cursos.map((c) => ({
-    nombre: c.nombre,
-    moodle_course_id: Number(c.id),
-    programa: programa || null,
+  const ids = [...new Set(cursos.map((c) => Number(c?.id)))];
+  if (ids.some((n) => !Number.isInteger(n) || n <= 1)) throw new HttpError(400, 'Hay un curso con ID inválido.');
+
+  const lista = await moodle('core_course_get_courses');
+  const deMoodle = new Map(lista.map((c) => [c.id, c]));
+  const faltantes = ids.filter((n) => !deMoodle.has(n));
+  if (faltantes.length) throw new HttpError(400, `Estos cursos no existen en Moodle: ${faltantes.join(', ')}`);
+
+  const prog = texto(programa, 120) || null;
+  const filas = ids.map((n) => ({
+    nombre: String(deMoodle.get(n).fullname).slice(0, 200),
+    moodle_course_id: n,
+    programa: prog,
     activo: true,
   }));
 
@@ -114,19 +213,18 @@ app.post('/api/moodle/import-courses', auth, soloAdmin, ah(async (req, res) => {
 }));
 
 // Crea o vincula un usuario en Moodle y guarda moodle_user_id
-app.post('/api/moodle/sync-user', auth, soloAdmin, ah(async (req, res) => {
-  const { user_id } = req.body || {};
+app.post('/api/moodle/sync-user', auth, soloAdmin, limiteEscritura, ah(async (req, res) => {
+  const user_id = exigirUuid((req.body || {}).user_id, 'user_id');
   const { data: perfil } = await sb
     .from('profiles')
     .select('id,email,nombre,apellidos,rol,estado')
     .eq('id', user_id)
     .maybeSingle();
 
-  if (!perfil) return res.status(404).json({ error: 'Usuario no encontrado.' });
+  if (!perfil) throw new HttpError(404, 'Usuario no encontrado.');
   if (!['estudiante', 'profesor'].includes(perfil.rol))
-    return res.status(400).json({ error: 'Solo Estudiantes y Profesores se sincronizan con Moodle.' });
-  if (perfil.estado !== 'Activo')
-    return res.status(400).json({ error: 'El usuario aún no está autorizado (estado Activo).' });
+    throw new HttpError(400, 'Solo Estudiantes y Profesores se sincronizan con Moodle.');
+  if (perfil.estado !== 'Activo') throw new HttpError(400, 'El usuario aún no está autorizado (estado Activo).');
 
   const moodleId = await asegurarUsuarioMoodle(perfil);
   const { error } = await sb.from('profiles').update({ moodle_user_id: String(moodleId) }).eq('id', perfil.id);
@@ -134,87 +232,117 @@ app.post('/api/moodle/sync-user', auth, soloAdmin, ah(async (req, res) => {
   res.json({ ok: true, moodle_user_id: moodleId });
 }));
 
+// Crea una matrícula (solo administradores). Devuelve la existente si ya estaba matriculado.
+app.post('/api/matriculas', auth, soloAdmin, limiteEscritura, ah(async (req, res) => {
+  const user_id = exigirUuid((req.body || {}).user_id, 'user_id');
+  const curso_id = exigirId((req.body || {}).curso_id, 'curso_id');
+  const m = await crearMatricula(user_id, curso_id);
+  res.json(m);
+}));
+
+async function crearMatricula(user_id, curso_id) {
+  const [{ data: perfil }, { data: curso }] = await Promise.all([
+    sb.from('profiles').select('id,rol,estado').eq('id', user_id).maybeSingle(),
+    sb.from('cursos').select('id,activo').eq('id', curso_id).maybeSingle(),
+  ]);
+  if (!perfil) throw new HttpError(404, 'Usuario no encontrado.');
+  if (!curso || !curso.activo) throw new HttpError(404, 'Curso no disponible.');
+  if (perfil.estado !== 'Activo') throw new HttpError(400, 'El usuario aún no está autorizado.');
+  if (!['estudiante', 'profesor'].includes(perfil.rol))
+    throw new HttpError(400, 'Solo Estudiantes y Profesores pueden matricularse.');
+
+  const rol_moodle = perfil.rol === 'profesor' ? 'teacher' : 'student';
+  const { data: nueva, error } = await sb
+    .from('matriculas')
+    .insert([{ user_id, curso_id, rol_moodle }])
+    .select('id')
+    .single();
+
+  if (error) {
+    if (error.code === '23505') {
+      const { data: existente } = await sb
+        .from('matriculas')
+        .select('id')
+        .eq('user_id', user_id)
+        .eq('curso_id', curso_id)
+        .maybeSingle();
+      return { id: existente?.id, existente: true };
+    }
+    throw error;
+  }
+  return { id: nueva.id, existente: false };
+}
+
 // Matricula en Moodle una matrícula ya registrada en Supabase
-app.post('/api/moodle/enrol', auth, soloAdmin, ah(async (req, res) => {
-  const { matricula_id } = req.body || {};
+app.post('/api/moodle/enrol', auth, soloAdmin, limiteEscritura, ah(async (req, res) => {
+  const matricula_id = exigirId((req.body || {}).matricula_id, 'matricula_id');
   const { data: m } = await sb.from('matriculas').select(MATRICULA_SELECT).eq('id', matricula_id).maybeSingle();
 
-  if (!m) return res.status(404).json({ error: 'Matrícula no encontrada.' });
-  if (m.perfil.estado !== 'Activo')
-    return res.status(400).json({ error: 'El usuario aún no está autorizado.' });
+  if (!m) throw new HttpError(404, 'Matrícula no encontrada.');
+  if (m.perfil.estado !== 'Activo') throw new HttpError(400, 'El usuario aún no está autorizado.');
   if (!m.curso?.moodle_course_id)
-    return res.status(400).json({ error: 'El curso no tiene ID de Moodle. Impórtalo desde "API de Moodle".' });
+    throw new HttpError(400, 'El curso no tiene ID de Moodle. Impórtalo desde "API de Moodle".');
 
-  try {
-    const moodleId = await asegurarUsuarioMoodle(m.perfil);
-
-    if (String(m.perfil.moodle_user_id) !== String(moodleId)) {
-      await sb.from('profiles').update({ moodle_user_id: String(moodleId) }).eq('id', m.perfil.id);
-    }
-
-    await moodle('enrol_manual_enrol_users', {
-      enrolments: [
-        {
-          roleid: ROLES_MOODLE[m.rol_moodle],
-          userid: moodleId,
-          courseid: m.curso.moodle_course_id,
-        },
-      ],
-    });
-
-    await sb.from('matriculas').update({ moodle_estado: 'Sincronizada', moodle_error: null }).eq('id', m.id);
-    res.json({ ok: true, moodle_user_id: moodleId });
-  } catch (e) {
-    await sb
-      .from('matriculas')
-      .update({ moodle_estado: 'Error', moodle_error: String(e.message).slice(0, 300) })
-      .eq('id', m.id);
-    res.status(502).json({ error: e.message });
-  }
+  const moodleId = await sincronizarMatricula(m);
+  res.json({ ok: true, moodle_user_id: moodleId });
 }));
 
 // Calificación del alumno en un curso (trae el total del curso y el detalle por actividad)
 app.get('/api/moodle/grade/:matricula_id', auth, ah(async (req, res) => {
-  const { matricula_id } = req.params;
+  const matricula_id = exigirId(req.params.matricula_id, 'matricula_id');
+  if (req.user.estado !== 'Activo') throw new HttpError(403, 'Tu cuenta no está activa.');
+
   const { data: m } = await sb.from('matriculas').select(MATRICULA_SELECT).eq('id', matricula_id).maybeSingle();
+  if (!m) throw new HttpError(404, 'Matrícula no encontrada.');
 
-  if (!m) return res.status(404).json({ error: 'Matrícula no encontrada.' });
+  let autorizado = m.user_id === req.user.id || ['superadmin', 'administrador', 'coordinador'].includes(req.user.rol);
 
-  const esPropia = m.user_id === req.user.id;
-  const puedeVerOtras = ['superadmin', 'administrador', 'coordinador', 'profesor'].includes(req.user.rol);
-  if (!esPropia && !puedeVerOtras) return res.status(403).json({ error: 'No autorizado.' });
+  // Un profesor solo ve calificaciones de los cursos en los que él mismo está matriculado
+  if (!autorizado && req.user.rol === 'profesor' && m.curso?.id) {
+    const { data: propia } = await sb
+      .from('matriculas')
+      .select('id')
+      .eq('user_id', req.user.id)
+      .eq('curso_id', m.curso.id)
+      .eq('rol_moodle', 'teacher')
+      .maybeSingle();
+    autorizado = !!propia;
+  }
+  if (!autorizado) throw new HttpError(403, 'No autorizado.');
 
   if (!m.curso?.moodle_course_id) return res.json({ calificacion: null, items: [] });
   if (m.moodle_estado !== 'Sincronizada') {
     return res.json({ calificacion: null, items: [], aviso: 'Aún no sincronizado con Moodle.' });
   }
 
+  let data;
   try {
     const moodleId = await asegurarUsuarioMoodle(m.perfil);
-    const data = await moodle('gradereport_user_get_grade_items', {
+    data = await moodle('gradereport_user_get_grade_items', {
       courseid: m.curso.moodle_course_id,
       userid: moodleId,
     });
-
-    const items = data?.usergrades?.[0]?.gradeitems || [];
-    const total = items.find((it) => it.itemtype === 'course');
-
-    res.json({
-      calificacion: total?.gradeformatted?.trim() || null,
-      items: items
-        .filter((it) => it.itemtype === 'mod' || it.itemtype === 'manual')
-        .map((it) => ({ nombre: it.itemname, calificacion: it.gradeformatted?.trim() || null })),
-    });
   } catch (e) {
-    res.status(502).json({ error: e.message });
+    console.error('grade:', e.message);
+    throw new HttpError(502, 'No se pudo consultar la calificación en Moodle.');
   }
+
+  const items = data?.usergrades?.[0]?.gradeitems || [];
+  const total = items.find((it) => it.itemtype === 'course');
+
+  res.json({
+    calificacion: total?.gradeformatted?.trim() || null,
+    items: items
+      .filter((it) => it.itemtype === 'mod' || it.itemtype === 'manual')
+      .map((it) => ({ nombre: it.itemname, calificacion: it.gradeformatted?.trim() || null })),
+  });
 }));
 
 // Desmatricula en Moodle y borra la matrícula
-app.post('/api/moodle/unenrol', auth, soloAdmin, ah(async (req, res) => {
-  const { matricula_id } = req.body || {};
+app.post('/api/moodle/unenrol', auth, soloAdmin, limiteEscritura, ah(async (req, res) => {
+  const matricula_id = exigirId((req.body || {}).matricula_id, 'matricula_id');
   const { data: m } = await sb.from('matriculas').select(MATRICULA_SELECT).eq('id', matricula_id).maybeSingle();
-  if (!m) return res.status(404).json({ error: 'Matrícula no encontrada.' });
+  if (!m) throw new HttpError(404, 'Matrícula no encontrada.');
 
   if (m.moodle_estado === 'Sincronizada' && m.perfil?.moodle_user_id && m.curso?.moodle_course_id) {
     try {
@@ -228,7 +356,8 @@ app.post('/api/moodle/unenrol', auth, soloAdmin, ah(async (req, res) => {
         ],
       });
     } catch (e) {
-      return res.status(502).json({ error: `No se pudo desmatricular en Moodle: ${e.message}` });
+      console.error('unenrol:', e.message);
+      throw new HttpError(502, 'No se pudo desmatricular en Moodle.');
     }
   }
 
@@ -238,12 +367,9 @@ app.post('/api/moodle/unenrol', auth, soloAdmin, ah(async (req, res) => {
 }));
 
 // Acceso directo al curso (SSO): devuelve una URL de Moodle que inicia sesión sola
-app.post('/api/moodle/launch', auth, ah(async (req, res) => {
-  if (req.user.estado !== 'Activo') {
-    return res.status(403).json({ error: 'Tu cuenta no está activa.' });
-  }
-  const { matricula_id } = req.body || {};
-  if (!matricula_id) return res.status(400).json({ error: 'Falta matricula_id.' });
+app.post('/api/moodle/launch', auth, limiteEscritura, ah(async (req, res) => {
+  if (req.user.estado !== 'Activo') throw new HttpError(403, 'Tu cuenta no está activa.');
+  const matricula_id = exigirId((req.body || {}).matricula_id, 'matricula_id');
 
   const { data: m, error } = await sb
     .from('matriculas')
@@ -251,15 +377,13 @@ app.post('/api/moodle/launch', auth, ah(async (req, res) => {
     .eq('id', matricula_id)
     .maybeSingle();
   if (error) throw error;
-  if (!m || m.user_id !== req.user.id) {
-    return res.status(403).json({ error: 'Esa matrícula no es tuya.' });
-  }
+  if (!m || m.user_id !== req.user.id) throw new HttpError(403, 'Esa matrícula no es tuya.');
   if (m.moodle_estado !== 'Sincronizada' || !m.curso?.moodle_course_id) {
-    return res.status(409).json({ error: 'El curso aún no está sincronizado con Moodle.' });
+    throw new HttpError(409, 'El curso aún no está sincronizado con Moodle.');
   }
 
   const base = (process.env.MOODLE_URL || '').replace(/\/$/, '');
-  const destino = `${base}/course/view.php?id=${m.curso.moodle_course_id}`;
+  const destino = `${base}/course/view.php?id=${Number(m.curso.moodle_course_id)}`;
 
   let r;
   try {
@@ -267,23 +391,189 @@ app.post('/api/moodle/launch', auth, ah(async (req, res) => {
       user: { email: String(m.perfil.email).toLowerCase() },
     });
   } catch (e) {
-    return res.status(502).json({ error: `No se pudo generar el acceso directo: ${e.message}` });
+    console.error('launch:', e.message);
+    throw new HttpError(502, 'No se pudo generar el acceso directo a Moodle.');
   }
-  if (!r?.loginurl) {
-    return res.status(502).json({ error: 'Moodle no devolvió la URL de acceso (revisa el plugin userkey).' });
+  if (!r?.loginurl) throw new HttpError(502, 'Moodle no devolvió la URL de acceso (revisa el plugin userkey).');
+
+  // La URL debe apuntar al propio Moodle configurado (evita redirecciones a otros sitios)
+  let loginUrl;
+  try {
+    loginUrl = new URL(r.loginurl);
+  } catch {
+    throw new HttpError(502, 'Moodle devolvió una URL inválida.');
+  }
+  if (loginUrl.origin !== new URL(base).origin) throw new HttpError(502, 'Moodle devolvió una URL no confiable.');
+
+  loginUrl.searchParams.set('wantsurl', destino);
+  res.json({ url: loginUrl.toString() });
+}));
+
+// Actualiza rol, estado, programa o ámbito de un usuario, validado en el servidor
+app.patch('/api/users/:id', auth, requireRol('superadmin', 'administrador', 'coordinador'), limiteEscritura, ah(async (req, res) => {
+  const id = exigirUuid(req.params.id, 'id');
+  const body = req.body || {};
+  const actor = req.user;
+
+  if (id === actor.id) throw new HttpError(400, 'No puedes modificar tu propia cuenta.');
+
+  const { data: objetivo } = await sb
+    .from('profiles')
+    .select('id,rol,estado,programa,ambito')
+    .eq('id', id)
+    .maybeSingle();
+  if (!objetivo) throw new HttpError(404, 'Usuario no encontrado.');
+
+  const esAdmin = ['superadmin', 'administrador'].includes(actor.rol);
+
+  if (esAdmin) {
+    // El Administrador no toca cuentas de Superadministrador ni de otros Administradores
+    if (actor.rol !== 'superadmin' && ['superadmin', 'administrador'].includes(objetivo.rol)) {
+      throw new HttpError(403, 'No tienes permiso sobre este usuario.');
+    }
+  } else {
+    // El Coordinador solo gestiona solicitudes pendientes dentro de su ámbito
+    const enAmbito =
+      !Array.isArray(actor.ambito) || actor.ambito.length === 0 || actor.ambito.includes(objetivo.programa);
+    if (objetivo.estado !== 'Pendiente' || !enAmbito) {
+      throw new HttpError(403, 'No tienes permiso sobre este usuario.');
+    }
+    if (body.ambito !== undefined) throw new HttpError(403, 'No puedes cambiar el ámbito.');
   }
 
-  const sep = r.loginurl.includes('?') ? '&' : '?';
-  res.json({ url: `${r.loginurl}${sep}wantsurl=${encodeURIComponent(destino)}` });
+  const cambios = {};
+
+  if (body.rol !== undefined) {
+    const permitidos = esAdmin ? ROLES_ASIGNABLES[actor.rol] : ['estudiante', 'profesor'];
+    if (!permitidos.includes(body.rol)) throw new HttpError(403, 'No puedes asignar ese rol.');
+    cambios.rol = body.rol;
+  }
+  if (body.estado !== undefined) {
+    if (!ESTADOS_VALIDOS.includes(body.estado)) throw new HttpError(400, 'Estado inválido.');
+    cambios.estado = body.estado;
+  }
+  if (body.programa !== undefined) {
+    if (body.programa !== null && typeof body.programa !== 'string') throw new HttpError(400, 'Programa inválido.');
+    cambios.programa = texto(body.programa, 120) || null;
+  }
+  if (body.ambito !== undefined) {
+    if (!Array.isArray(body.ambito) || body.ambito.length > 30 || body.ambito.some((a) => typeof a !== 'string')) {
+      throw new HttpError(400, 'Ámbito inválido.');
+    }
+    cambios.ambito = body.ambito.map((a) => texto(a, 80)).filter(Boolean);
+  }
+  if (Object.keys(cambios).length === 0) throw new HttpError(400, 'No hay cambios que guardar.');
+
+  const { data, error } = await sb
+    .from('profiles')
+    .update(cambios)
+    .eq('id', id)
+    .select('id,rol,estado,programa,ambito,moodle_user_id')
+    .maybeSingle();
+  if (error) throw error;
+
+  const antes = {};
+  Object.keys(cambios).forEach((k) => { antes[k] = objetivo[k]; });
+  const { error: errAudit } = await sb.from('audit_log').insert({
+    actor: actor.id,
+    actor_rol: actor.rol,
+    accion: 'usuario_actualizado',
+    objetivo: id,
+    antes,
+    despues: cambios,
+  });
+  if (errAudit) console.error('audit_log:', errAudit.message);
+
+  res.json({ ok: true, perfil: data });
+}));
+
+// El estudiante solicita inscripción a un curso: el precio sale de la base de datos, no del cliente
+app.post('/api/tramites/inscripcion', auth, limiteEscritura, ah(async (req, res) => {
+  if (req.user.estado !== 'Activo' || req.user.rol !== 'estudiante') {
+    throw new HttpError(403, 'Solo estudiantes activos pueden solicitar inscripción.');
+  }
+  const curso_id = exigirId((req.body || {}).curso_id, 'curso_id');
+
+  const { data: curso } = await sb
+    .from('cursos')
+    .select('id,nombre,precio,activo,moodle_course_id')
+    .eq('id', curso_id)
+    .maybeSingle();
+  if (!curso || !curso.activo || !curso.moodle_course_id) throw new HttpError(404, 'Curso no disponible.');
+
+  const [{ data: mat }, { data: abierta }] = await Promise.all([
+    sb.from('matriculas').select('id').eq('user_id', req.user.id).eq('curso_id', curso_id).maybeSingle(),
+    sb
+      .from('tramites')
+      .select('id')
+      .eq('user_id', req.user.id)
+      .eq('tipo', TIPO_INSCRIPCION)
+      .eq('curso_id', curso_id)
+      .in('estado', ['Solicitado', 'En proceso'])
+      .maybeSingle(),
+  ]);
+  if (mat) throw new HttpError(409, 'Ya estás inscrito en este curso.');
+  if (abierta) throw new HttpError(409, 'Ya tienes una solicitud abierta para este curso.');
+
+  const { error } = await sb.from('tramites').insert([
+    { user_id: req.user.id, tipo: TIPO_INSCRIPCION, detalle: curso.nombre, curso_id: curso.id, monto: curso.precio ?? null },
+  ]);
+  if (error) throw error;
+  res.json({ ok: true });
+}));
+
+// Resuelve una solicitud de inscripción: aprobar (matricula + Moodle) o rechazar
+app.post('/api/tramites/:id/resolver', auth, soloAdmin, limiteEscritura, ah(async (req, res) => {
+  const id = exigirId(req.params.id, 'id');
+  const accion = (req.body || {}).accion;
+  if (!['aprobar', 'rechazar'].includes(accion)) throw new HttpError(400, 'Acción inválida.');
+
+  const { data: t } = await sb
+    .from('tramites')
+    .select('id,user_id,tipo,estado,curso_id')
+    .eq('id', id)
+    .maybeSingle();
+  if (!t || t.tipo !== TIPO_INSCRIPCION) throw new HttpError(404, 'Solicitud no encontrada.');
+  if (!['Solicitado', 'En proceso'].includes(t.estado)) throw new HttpError(409, 'Esta solicitud ya fue resuelta.');
+
+  if (accion === 'rechazar') {
+    const { error } = await sb
+      .from('tramites')
+      .update({ estado: 'Rechazado', respuesta: 'Solicitud de inscripción rechazada.' })
+      .eq('id', id);
+    if (error) throw error;
+    return res.json({ ok: true });
+  }
+
+  if (!t.curso_id) throw new HttpError(400, 'El curso de esta solicitud ya no existe. Rechaza la solicitud.');
+
+  const { id: matriculaId } = await crearMatricula(t.user_id, t.curso_id);
+
+  let aviso = null;
+  const { data: m } = await sb.from('matriculas').select(MATRICULA_SELECT).eq('id', matriculaId).maybeSingle();
+  if (!m?.curso?.moodle_course_id) {
+    aviso = 'El curso no tiene ID de Moodle.';
+  } else {
+    try {
+      await sincronizarMatricula(m);
+    } catch (e) {
+      aviso = e.message;
+    }
+  }
+
+  const { error } = await sb
+    .from('tramites')
+    .update({ estado: 'Entregado', respuesta: 'Acceso otorgado al curso.' })
+    .eq('id', id);
+  if (error) throw error;
+  res.json({ ok: true, aviso });
 }));
 
 // Elimina un usuario (solo Superadministrador)
-app.delete('/api/users/:id', auth, requireRol('superadmin'), ah(async (req, res) => {
-  const id = req.params.id;
+app.delete('/api/users/:id', auth, requireRol('superadmin'), limiteEscritura, ah(async (req, res) => {
+  const id = exigirUuid(req.params.id, 'id');
 
-  if (id === req.user.id) {
-    return res.status(400).json({ error: 'No puedes eliminar tu propia cuenta.' });
-  }
+  if (id === req.user.id) throw new HttpError(400, 'No puedes eliminar tu propia cuenta.');
 
   const { data: objetivo } = await sb
     .from('profiles')
@@ -291,9 +581,9 @@ app.delete('/api/users/:id', auth, requireRol('superadmin'), ah(async (req, res)
     .eq('id', id)
     .maybeSingle();
 
-  if (!objetivo) return res.status(404).json({ error: 'Usuario no encontrado.' });
+  if (!objetivo) throw new HttpError(404, 'Usuario no encontrado.');
   if (objetivo.rol === 'superadmin') {
-    return res.status(400).json({ error: 'No se puede eliminar a un Superadministrador. Cámbiale el rol primero.' });
+    throw new HttpError(400, 'No se puede eliminar a un Superadministrador. Cámbiale el rol primero.');
   }
 
   // Moodle: se suspende la cuenta (no se borra) para conservar calificaciones y evidencias
@@ -306,8 +596,9 @@ app.delete('/api/users/:id', auth, requireRol('superadmin'), ah(async (req, res)
       });
       moodleResultado = 'suspendida';
     } catch (e) {
+      console.error('delete user (moodle):', e.message);
       moodleResultado = 'error';
-      moodleAviso = e.message;
+      moodleAviso = 'No se pudo suspender la cuenta en Moodle.';
     }
   }
 
@@ -334,9 +625,15 @@ app.delete('/api/users/:id', auth, requireRol('superadmin'), ah(async (req, res)
   if (errPerfil) throw errPerfil;
 
   const { error: errAuth } = await sb.auth.admin.deleteUser(id);
-  if (errAuth) throw new Error(`Se borró el perfil, pero no la cuenta de acceso: ${errAuth.message}`);
+  if (errAuth) {
+    console.error('deleteUser:', errAuth.message);
+    throw new HttpError(500, 'Se borró el perfil, pero no la cuenta de acceso. Avisa al administrador técnico.');
+  }
 
   res.json({ ok: true, moodle: moodleResultado, moodle_aviso: moodleAviso });
 }));
+
+// Rutas inexistentes
+app.use((req, res) => res.status(404).json({ error: 'No encontrado.' }));
 
 app.listen(PORT, () => console.log(`Backend IINICIA escuchando en http://localhost:${PORT}`));

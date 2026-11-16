@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
+import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { ROLES } from '../lib/permissions';
 
@@ -10,6 +11,11 @@ const CATALOGO = [
   { id: 'TRM-04', titulo: 'Constancia de inscripción', costo: 'Sin costo', entrega: 'Inmediato (digital)', roles: ['estudiante'] },
   { id: 'TRM-05', titulo: 'Actualización de datos personales', costo: 'Sin costo', entrega: '2 días hábiles', roles: ['estudiante', 'profesor', 'aspirante', 'coordinador'] },
 ];
+
+const DOCUMENTOS = {
+  'Constancia de estudios con calificaciones': 'Constancia de Estudios con Calificaciones',
+  'Historial académico oficial (Kardex)': 'Historial Académico Oficial (Kardex)',
+};
 
 const TIPO_INSCRIPCION = 'Inscripción a curso';
 const ESTADOS_TRAMITE = ['Solicitado', 'En proceso', 'Entregado', 'Rechazado'];
@@ -40,6 +46,42 @@ export default function SchoolServices() {
   const [misCursosIds, setMisCursosIds] = useState(new Set());
   const [cargandoCursos, setCargandoCursos] = useState(true);
   const [enviandoId, setEnviandoId] = useState(null);
+
+  // Solicitante — documento imprimible
+  const [docAbierto, setDocAbierto] = useState(null);
+  const [docCursos, setDocCursos] = useState([]);
+  const [cargandoDoc, setCargandoDoc] = useState(false);
+
+  const abrirDocumento = async (r) => {
+    setDocAbierto(r);
+    setCargandoDoc(true);
+    setDocCursos([]);
+
+    const { data: mats } = await supabase
+      .from('matriculas')
+      .select('id,moodle_estado,curso:cursos(id,nombre,programa,moodle_course_id)')
+      .eq('user_id', user.id);
+
+    const lista = await Promise.all(
+      (mats || []).map(async (m) => {
+        let calificacion = '—';
+        if (m.moodle_estado === 'Sincronizada' && m.curso?.moodle_course_id) {
+          try {
+            const d = await api(`/api/moodle/grade/${m.id}`);
+            calificacion = d.calificacion || 'Aún sin calificar';
+          } catch {
+            calificacion = 'No disponible';
+          }
+        }
+        return { nombre: m.curso?.nombre || 'Curso', programa: m.curso?.programa, calificacion };
+      })
+    );
+
+    setDocCursos(lista);
+    setCargandoDoc(false);
+  };
+
+  const cerrarDocumento = () => { setDocAbierto(null); setDocCursos([]); };
 
   // Atención
   const [filtro, setFiltro] = useState('abiertos');
@@ -91,14 +133,12 @@ export default function SchoolServices() {
     setEnviandoId(curso.id);
     setMsg('');
     setErr('');
-    const { error } = await supabase
-      .from('tramites')
-      .insert([{ user_id: user.id, tipo: TIPO_INSCRIPCION, detalle: curso.nombre, curso_id: curso.id, monto: curso.precio ?? null }]);
-
-    if (error) setErr(error.message);
-    else {
+    try {
+      await api('/api/tramites/inscripcion', { method: 'POST', body: { curso_id: curso.id } });
       setMsg('Solicitud de inscripción enviada. Un administrador la revisará y te dará acceso al curso.');
       load();
+    } catch (e) {
+      setErr(e.message);
     }
     setEnviandoId(null);
   };
@@ -398,7 +438,7 @@ export default function SchoolServices() {
           <div className="table-wrap">
             <table className="table">
               <thead>
-                <tr><th>Trámite</th><th>Fecha</th><th>Estado</th><th>Respuesta</th></tr>
+                <tr><th>Trámite</th><th>Fecha</th><th>Estado</th><th>Respuesta</th><th /></tr>
               </thead>
               <tbody>
                 {rows.map((r) => (
@@ -410,6 +450,13 @@ export default function SchoolServices() {
                     <td>{fecha(r.created_at)}</td>
                     <td><span className={`badge ${tonoTramite(r.estado)}`}>{r.estado}</span></td>
                     <td>{r.respuesta || '—'}</td>
+                    <td>
+                      {r.estado === 'Entregado' && DOCUMENTOS[r.tipo] && (
+                        <button className="btn btn--primary btn--xs" onClick={() => abrirDocumento(r)}>
+                          Ver documento
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -417,6 +464,89 @@ export default function SchoolServices() {
           </div>
         )}
       </div>
+
+      {docAbierto && (
+        <div className="doc-overlay">
+          <div className="doc-overlay__backdrop" onClick={cerrarDocumento} />
+          <div className="doc-sheet">
+            <div className="doc-sheet__actions no-print">
+              <button className="btn btn--primary btn--sm" onClick={() => window.print()}>Imprimir / Guardar PDF</button>
+              <button className="btn btn--light btn--sm" onClick={cerrarDocumento}>Cerrar</button>
+            </div>
+
+            <div className="doc-sheet__content">
+              <header className="doc-sheet__header">
+                <h2>UNIVERSIDAD IINICIA</h2>
+                <p>Instituto de Innovación y Ciencias Aplicadas</p>
+              </header>
+
+              <h3 className="doc-sheet__title">{DOCUMENTOS[docAbierto.tipo]}</h3>
+
+              <p className="doc-sheet__meta">
+                Folio: {docAbierto.id.slice(0, 8).toUpperCase()} · Fecha de expedición: {fecha(new Date().toISOString())}
+              </p>
+
+              <p>
+                Se hace constar que el/la alumno(a) <strong>{profile?.nombre} {profile?.apellidos}</strong>, con correo{' '}
+                <strong>{user?.email}</strong>, inscrito(a) en el programa de <strong>{profile?.programa || 'Sin programa'}</strong>,
+                se encuentra registrado(a) en esta institución, habiendo cursado o cursando las siguientes materias:
+              </p>
+
+              {cargandoDoc ? (
+                <p>Cargando información académica…</p>
+              ) : (
+                <table className="doc-sheet__table">
+                  <thead>
+                    <tr><th>Curso</th><th>Programa</th><th>Calificación</th></tr>
+                  </thead>
+                  <tbody>
+                    {docCursos.length === 0 ? (
+                      <tr><td colSpan={3}>Sin cursos registrados.</td></tr>
+                    ) : (
+                      docCursos.map((c, i) => (
+                        <tr key={i}>
+                          <td>{c.nombre}</td>
+                          <td>{c.programa || '—'}</td>
+                          <td>{c.calificacion}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              )}
+
+              <p className="doc-sheet__footer">
+                Se expide la presente para los fines que al interesado convengan.
+              </p>
+              <p className="doc-sheet__firma">____________________________<br />Control Escolar · Universidad IINICIA</p>
+            </div>
+          </div>
+
+          <style>{`
+            .doc-overlay { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; }
+            .doc-overlay__backdrop { position: absolute; inset: 0; background: rgba(4,11,34,.5); }
+            .doc-sheet { position: relative; z-index: 1; width: min(720px, 94vw); max-height: 90vh; overflow: auto;
+              background: #fff; border-radius: 16px; padding: 32px 36px; box-shadow: 0 30px 60px rgba(4,11,34,.4); }
+            .doc-sheet__actions { display: flex; gap: 10px; justify-content: flex-end; margin-bottom: 20px; }
+            .doc-sheet__header { text-align: center; margin-bottom: 6px; }
+            .doc-sheet__header h2 { margin: 0; letter-spacing: .04em; }
+            .doc-sheet__header p { margin: 2px 0 18px; color: #64748b; }
+            .doc-sheet__title { text-align: center; text-decoration: underline; margin: 10px 0 18px; }
+            .doc-sheet__meta { text-align: right; color: #64748b; font-size: 13px; margin-bottom: 18px; }
+            .doc-sheet__table { width: 100%; border-collapse: collapse; margin: 18px 0; }
+            .doc-sheet__table th, .doc-sheet__table td { border: 1px solid #cbd5e1; padding: 8px 10px; text-align: left; font-size: 14px; }
+            .doc-sheet__footer { margin-top: 24px; }
+            .doc-sheet__firma { margin-top: 48px; text-align: center; color: #334155; }
+
+            @media print {
+              body * { visibility: hidden; }
+              .doc-sheet, .doc-sheet * { visibility: visible; }
+              .doc-sheet { position: absolute; top: 0; left: 0; width: 100%; box-shadow: none; max-height: none; overflow: visible; }
+              .no-print { display: none !important; }
+            }
+          `}</style>
+        </div>
+      )}
     </div>
   );
 }

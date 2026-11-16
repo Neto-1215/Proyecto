@@ -35,12 +35,18 @@ async function moodle(funcion, params = {}) {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body,
+      signal: AbortSignal.timeout(15000), // evita que una respuesta colgada bloquee el backend
     });
   } catch {
-    throw new Error(`No se pudo conectar con Moodle en ${MOODLE_URL}. ¿Está encendido Apache en XAMPP?`);
+    throw new Error('No se pudo conectar con Moodle (¿está encendido Apache en XAMPP?)');
   }
 
-  const data = await res.json();
+  let data;
+  try {
+    data = await res.json();
+  } catch {
+    throw new Error('Moodle devolvió una respuesta que no es JSON válido');
+  }
   if (data && data.exception) throw new Error(`Moodle: ${data.message} (${data.errorcode})`);
   return data;
 }

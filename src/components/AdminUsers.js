@@ -70,19 +70,14 @@ export default function AdminUsers() {
       payload.ambito = d.ambito.split(',').map((s) => s.trim()).filter(Boolean);
     }
 
-    const { data, error } = await supabase
-      .from('profiles')
-      .update(payload)
-      .eq('id', r.id)
-      .select('id,rol,estado,programa,ambito,moodle_user_id')
-      .maybeSingle();
-
-    if (error) setErr(error.message);
-    else if (!data) setErr('No se pudo actualizar: no tienes permiso sobre este usuario.');
-    else {
+    try {
+      const { perfil: data } = await api(`/api/users/${r.id}`, { method: 'PATCH', body: payload });
+      if (!data) throw new Error('No se pudo actualizar: no tienes permiso sobre este usuario.');
       setRows((rs) => rs.map((x) => (x.id === r.id ? { ...x, ...data, rol: normalizeRol(data.rol) } : x)));
       setDrafts(({ [r.id]: _, ...resto }) => resto);
       setMsg('Cambios guardados.');
+    } catch (e) {
+      setErr(e.message);
     }
     setSavingId(null);
   };

@@ -64,7 +64,7 @@ export default function CourseAccess() {
 
   /* ---------- Calificaciones del alumno, una vez cargadas sus matrículas ---------- */
   useEffect(() => {
-    if (!esEstudiante) return;
+    if (!esEstudiante && !verTabla) return;
     mats.forEach((m) => {
       if (m.moodle_estado === 'Sincronizada' && m.curso?.moodle_course_id && grades[m.id] === undefined) {
         setGrades((g) => ({ ...g, [m.id]: 'cargando' }));
@@ -74,7 +74,7 @@ export default function CourseAccess() {
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mats, esEstudiante]);
+  }, [mats, esEstudiante, verTabla]);
 
   const matricular = async (e) => {
     e.preventDefault();
@@ -85,24 +85,22 @@ export default function CourseAccess() {
     setMsg('');
     setErr('');
 
-    const rol_moodle = persona.rol === 'profesor' ? 'teacher' : 'student';
-    const { data: nueva, error } = await supabase
-      .from('matriculas')
-      .insert([{ user_id: persona.id, curso_id: sel.curso, rol_moodle }])
-      .select('id')
-      .single();
-
-    if (error) {
-      setErr(error.code === '23505' ? 'Ese usuario ya está matriculado en el curso.' : error.message);
-    } else {
-      try {
-        await api('/api/moodle/enrol', { method: 'POST', body: { matricula_id: nueva.id } });
-        setMsg('Matrícula registrada y sincronizada con Moodle.');
-      } catch (e2) {
-        setErr(`La matrícula se guardó, pero no se pudo sincronizar con Moodle: ${e2.message}`);
+    try {
+      const nueva = await api('/api/matriculas', { method: 'POST', body: { user_id: persona.id, curso_id: sel.curso } });
+      if (nueva.existente) {
+        setErr('Ese usuario ya está matriculado en el curso.');
+      } else {
+        try {
+          await api('/api/moodle/enrol', { method: 'POST', body: { matricula_id: nueva.id } });
+          setMsg('Matrícula registrada y sincronizada con Moodle.');
+        } catch (e2) {
+          setErr(`La matrícula se guardó, pero no se pudo sincronizar con Moodle: ${e2.message}`);
+        }
+        setSel({ user: '', curso: '' });
+        load();
       }
-      setSel({ user: '', curso: '' });
-      load();
+    } catch (e) {
+      setErr(e.message);
     }
     setSaving(false);
   };
@@ -213,6 +211,7 @@ export default function CourseAccess() {
                 <th>Curso</th>
                 <th>Rol en Moodle</th>
                 <th>Moodle</th>
+                <th>Calificación</th>
                 {gestiona && <th />}
               </tr>
             </thead>
@@ -231,6 +230,13 @@ export default function CourseAccess() {
                     <span className={`badge ${badgeMoodle(m.moodle_estado)}`} title={m.moodle_error || ''}>
                       {m.moodle_estado}
                     </span>
+                  </td>
+                  <td>
+                    {m.rol_moodle === 'teacher'
+                      ? '—'
+                      : grades[m.id] === undefined || grades[m.id] === 'cargando'
+                      ? 'Cargando…'
+                      : grades[m.id]}
                   </td>
                   {gestiona && (
                     <td style={{ whiteSpace: 'nowrap' }}>

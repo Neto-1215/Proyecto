@@ -32,26 +32,8 @@ const UserProfile = () => {
 
                 let currentProfile = profiles && profiles.length > 0 ? profiles[0] : null;
 
-                if (!currentProfile) {
-                    const newProfile = {
-                        id: session.user.id,
-                        nombre: 'Estudiante',
-                        apellidos: 'IINICIA',
-                        carrera: 'Ingeniería Informática',
-                        estado: 'Activo',
-                        rol: 'Estudiante',
-                        moodle_user_id: `MDL-${Math.floor(1000 + Math.random() * 9000)}`
-                    };
-
-                    const { data: insertedData, error: insertError } = await supabase
-                        .from('profiles')
-                        .insert([newProfile])
-                        .select();
-
-                    if (!insertError && insertedData && insertedData.length > 0) {
-                        currentProfile = insertedData[0];
-                    }
-                }
+                // El perfil lo crea el trigger de la base de datos (rol Aspirante, estado Pendiente).
+                // Nunca se crea desde el navegador: asi nadie puede darse rol o estado a si mismo.
 
                 setUserProfile(currentProfile);
 

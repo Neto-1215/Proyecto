@@ -86,18 +86,12 @@ export default function CourseEnrollment({ onNavigate }) {
     setBusyId(u.id);
     setMsg('');
     setErr('');
-    const { data, error } = await supabase
-      .from('profiles')
-      .update({ rol: rolNuevo, estado: 'Activo', programa })
-      .eq('id', u.id)
-      .select('id')
-      .maybeSingle();
-
-    if (error) setErr(error.message);
-    else if (!data) setErr('No se pudo autorizar: no tienes permiso sobre este usuario.');
-    else {
+    try {
+      await api(`/api/users/${u.id}`, { method: 'PATCH', body: { rol: rolNuevo, estado: 'Activo', programa } });
       setMsg(`${nombreDe(u)} fue autorizado como ${ROLES[rolNuevo].label}. Ya puedes matricularlo en un curso.`);
       load();
+    } catch (e) {
+      setErr(e.message);
     }
     setBusyId(null);
   };
@@ -107,18 +101,12 @@ export default function CourseEnrollment({ onNavigate }) {
     setBusyId(u.id);
     setMsg('');
     setErr('');
-    const { data, error } = await supabase
-      .from('profiles')
-      .update({ estado: 'Suspendido' })
-      .eq('id', u.id)
-      .select('id')
-      .maybeSingle();
-
-    if (error) setErr(error.message);
-    else if (!data) setErr('No se pudo rechazar: no tienes permiso sobre este usuario.');
-    else {
+    try {
+      await api(`/api/users/${u.id}`, { method: 'PATCH', body: { estado: 'Suspendido' } });
       setMsg('Solicitud rechazada.');
       load();
+    } catch (e) {
+      setErr(e.message);
     }
     setBusyId(null);
   };
@@ -138,48 +126,16 @@ export default function CourseEnrollment({ onNavigate }) {
     setMsg('');
     setErr('');
 
-    const rol_moodle = s.usuario.rol === 'profesor' ? 'teacher' : 'student';
-    const { data: nueva, error } = await supabase
-      .from('matriculas')
-      .insert([{ user_id: s.usuario.id, curso_id: s.curso.id, rol_moodle }])
-      .select('id')
-      .single();
-
-    let matriculaId = nueva?.id;
-
-    if (error) {
-      if (error.code === '23505') {
-        // Ya estaba matriculado: toma la matrícula existente para sincronizarla
-        const existente = await supabase
-          .from('matriculas')
-          .select('id')
-          .eq('user_id', s.usuario.id)
-          .eq('curso_id', s.curso.id)
-          .maybeSingle();
-        matriculaId = existente.data?.id;
-      } else {
-        setErr(error.message);
-        setBusyCursoId(null);
-        return;
-      }
+    try {
+      // El servidor crea la matrícula, la sincroniza con Moodle y cierra el trámite
+      const r = await api(`/api/tramites/${s.id}/resolver`, { method: 'POST', body: { accion: 'aprobar' } });
+      const aviso = r.aviso
+        ? ` (la matrícula se guardó, pero no se sincronizó con Moodle: ${r.aviso} Puedes reintentarlo en "Mis cursos")`
+        : '';
+      setMsg(`Se otorgó acceso de ${nombreDe(s.usuario)} al curso "${s.curso.nombre}".${aviso}`);
+    } catch (e) {
+      setErr(e.message);
     }
-
-    let avisoMoodle = '';
-    if (matriculaId) {
-      try {
-        await api('/api/moodle/enrol', { method: 'POST', body: { matricula_id: matriculaId } });
-      } catch (e) {
-        avisoMoodle = ` (la matrícula se guardó, pero no se sincronizó con Moodle: ${e.message}. Puedes reintentarlo en "Mis cursos")`;
-      }
-    }
-
-    const { error: errTramite } = await supabase
-      .from('tramites')
-      .update({ estado: 'Entregado', respuesta: 'Acceso otorgado al curso.' })
-      .eq('id', s.id);
-    if (errTramite) setErr(errTramite.message);
-
-    setMsg(`Se otorgó acceso de ${nombreDe(s.usuario)} al curso "${s.curso.nombre}".${avisoMoodle}`);
     setBusyCursoId(null);
     load();
   };
@@ -189,15 +145,12 @@ export default function CourseEnrollment({ onNavigate }) {
     setBusyCursoId(s.id);
     setMsg('');
     setErr('');
-    const { error } = await supabase
-      .from('tramites')
-      .update({ estado: 'Rechazado', respuesta: 'Solicitud de inscripción rechazada.' })
-      .eq('id', s.id);
-
-    if (error) setErr(error.message);
-    else {
+    try {
+      await api(`/api/tramites/${s.id}/resolver`, { method: 'POST', body: { accion: 'rechazar' } });
       setMsg('Solicitud de inscripción rechazada.');
       load();
+    } catch (e) {
+      setErr(e.message);
     }
     setBusyCursoId(null);
   };

@@ -4,9 +4,9 @@ import { supabase, clienteTemporal } from '../lib/supabase';
 const traducirError = (msg = '') => {
   const m = msg.toLowerCase();
   if (m.includes('invalid login credentials')) return 'Correo o contraseña incorrectos.';
-  if (m.includes('already registered')) return 'Este correo ya está registrado. Inicia sesión.';
+  if (m.includes('already registered')) return 'No se pudo completar el registro. Si ya tienes cuenta, inicia sesión.';
   if (m.includes('email not confirmed')) return 'Debes confirmar tu correo antes de iniciar sesión. Revisa tu bandeja.';
-  if (m.includes('password should be at least')) return 'La contraseña debe tener al menos 6 caracteres.';
+  if (m.includes('password should be at least')) return 'La contraseña es demasiado corta.';
   if (m.includes('totp') || m.includes('mfa') || m.includes('verification failed')) {
     return 'Código incorrecto o vencido. Revisa el código actual de tu app.';
   }
@@ -68,8 +68,8 @@ const AuthForm = ({ initialMode = 'login', onModeChange, onLoginSuccess }) => {
     setError('');
 
     if (isSignUp) {
-      if (password.length < 6) {
-        setError('La contraseña debe tener al menos 6 caracteres.');
+      if (password.length < 10 || !/[a-z]/.test(password) || !/[A-Z]/.test(password) || !/\d/.test(password)) {
+        setError('La contraseña debe tener al menos 10 caracteres, con mayúsculas, minúsculas y números.');
         return;
       }
       if (password !== confirmPassword) {

@@ -5,6 +5,7 @@ const API = process.env.REACT_APP_API_URL || 'http://localhost:4000';
 export async function api(ruta, { method = 'GET', body } = {}) {
   const { data } = await supabase.auth.getSession();
   const token = data.session?.access_token;
+  if (!token) throw new Error('Tu sesión expiró. Inicia sesión de nuevo.');
 
   let res;
   try {
