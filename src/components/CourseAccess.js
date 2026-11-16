@@ -14,6 +14,7 @@ export default function CourseAccess() {
   const { rol } = useAuth();
   const gestiona = canManageEnrollments(rol);
   const verTabla = ['superadmin', 'administrador', 'coordinador'].includes(rol);
+  const esEstudiante = rol === 'estudiante';
 
   const [mats, setMats] = useState([]);
   const [cursos, setCursos] = useState([]);
@@ -24,6 +25,9 @@ export default function CourseAccess() {
   const [busyId, setBusyId] = useState(null);
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
+
+  // Calificaciones (solo vista de estudiante)
+  const [grades, setGrades] = useState({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -57,6 +61,20 @@ export default function CourseAccess() {
   }, [gestiona]);
 
   useEffect(() => { load(); }, [load]);
+
+  /* ---------- Calificaciones del alumno, una vez cargadas sus matrículas ---------- */
+  useEffect(() => {
+    if (!esEstudiante) return;
+    mats.forEach((m) => {
+      if (m.moodle_estado === 'Sincronizada' && m.curso?.moodle_course_id && grades[m.id] === undefined) {
+        setGrades((g) => ({ ...g, [m.id]: 'cargando' }));
+        api(`/api/moodle/grade/${m.id}`)
+          .then((d) => setGrades((g) => ({ ...g, [m.id]: d.calificacion || 'Aún sin calificar' })))
+          .catch(() => setGrades((g) => ({ ...g, [m.id]: 'No disponible' })));
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mats, esEstudiante]);
 
   const matricular = async (e) => {
     e.preventDefault();
@@ -247,6 +265,16 @@ export default function CourseAccess() {
               <span className="badge">{m.rol_moodle === 'teacher' ? 'Profesor del curso' : 'Estudiante'}</span>
               <h3>{m.curso?.nombre}</h3>
               <p>{m.curso?.programa || 'Sin programa'}</p>
+
+              {esEstudiante && (
+                <p style={{ margin: '4px 0 12px' }}>
+                  Calificación:{' '}
+                  <strong>
+                    {grades[m.id] === undefined || grades[m.id] === 'cargando' ? 'Cargando…' : grades[m.id]}
+                  </strong>
+                </p>
+              )}
+
               {MOODLE_URL && m.curso?.moodle_course_id && m.moodle_estado === 'Sincronizada' ? (
                 <button
                   className="btn btn--primary btn--xs"

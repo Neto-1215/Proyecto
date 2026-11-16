@@ -173,6 +173,43 @@ app.post('/api/moodle/enrol', auth, soloAdmin, ah(async (req, res) => {
   }
 }));
 
+// Calificación del alumno en un curso (trae el total del curso y el detalle por actividad)
+app.get('/api/moodle/grade/:matricula_id', auth, ah(async (req, res) => {
+  const { matricula_id } = req.params;
+  const { data: m } = await sb.from('matriculas').select(MATRICULA_SELECT).eq('id', matricula_id).maybeSingle();
+
+  if (!m) return res.status(404).json({ error: 'Matrícula no encontrada.' });
+
+  const esPropia = m.user_id === req.user.id;
+  const puedeVerOtras = ['superadmin', 'administrador', 'coordinador', 'profesor'].includes(req.user.rol);
+  if (!esPropia && !puedeVerOtras) return res.status(403).json({ error: 'No autorizado.' });
+
+  if (!m.curso?.moodle_course_id) return res.json({ calificacion: null, items: [] });
+  if (m.moodle_estado !== 'Sincronizada') {
+    return res.json({ calificacion: null, items: [], aviso: 'Aún no sincronizado con Moodle.' });
+  }
+
+  try {
+    const moodleId = await asegurarUsuarioMoodle(m.perfil);
+    const data = await moodle('gradereport_user_get_grade_items', {
+      courseid: m.curso.moodle_course_id,
+      userid: moodleId,
+    });
+
+    const items = data?.usergrades?.[0]?.gradeitems || [];
+    const total = items.find((it) => it.itemtype === 'course');
+
+    res.json({
+      calificacion: total?.gradeformatted?.trim() || null,
+      items: items
+        .filter((it) => it.itemtype === 'mod' || it.itemtype === 'manual')
+        .map((it) => ({ nombre: it.itemname, calificacion: it.gradeformatted?.trim() || null })),
+    });
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+}));
+
 // Desmatricula en Moodle y borra la matrícula
 app.post('/api/moodle/unenrol', auth, soloAdmin, ah(async (req, res) => {
   const { matricula_id } = req.body || {};
