@@ -101,7 +101,20 @@ export default function SchoolServices() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+  // Tiempo real: si alguien crea o actualiza un trámite, esta pantalla se
+  // actualiza sola, sin necesidad de refrescar la página.
+  useEffect(() => {
+    const canal = supabase
+      .channel('tramites-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tramites' }, () => {
+        load();
+      })
+      .subscribe();
 
+    return () => {
+      supabase.removeChannel(canal);
+    };
+  }, [load]);
   /* ---------- Cursos disponibles para solicitar inscripción ---------- */
   const loadCursos = useCallback(async () => {
     if (!esEstudiante) { setCargandoCursos(false); return; }
