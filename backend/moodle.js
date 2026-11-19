@@ -54,19 +54,21 @@ async function moodle(funcion, params = {}) {
 // Contraseña aleatoria que cumple la política por defecto de Moodle
 const generarPassword = () => `${crypto.randomBytes(9).toString('base64url')}Aa1!`;
 
-// Busca al usuario en Moodle por correo; si no existe, lo crea. Devuelve su ID de Moodle.
+// Busca al usuario en Moodle por correo; si no existe, lo crea. Devuelve su ID de Moodle
+// y, si se acaba de crear, también la contraseña inicial que se le asignó.
 async function asegurarUsuarioMoodle(perfil) {
   const email = String(perfil.email || '').toLowerCase();
   if (!email) throw new Error('El perfil no tiene correo');
 
   const encontrados = await moodle('core_user_get_users_by_field', { field: 'email', values: [email] });
-  if (Array.isArray(encontrados) && encontrados.length > 0) return encontrados[0].id;
+  if (Array.isArray(encontrados) && encontrados.length > 0) return { id: encontrados[0].id, password: null };
 
+  const password = generarPassword();
   const creados = await moodle('core_user_create_users', {
     users: [
       {
         username: email,
-        password: generarPassword(),
+        password,
         firstname: perfil.nombre || 'Nuevo',
         lastname: perfil.apellidos || 'Usuario',
         email,
@@ -74,7 +76,6 @@ async function asegurarUsuarioMoodle(perfil) {
       },
     ],
   });
-  return creados[0].id;
+  return { id: creados[0].id, password };
 }
-
 module.exports = { moodle, asegurarUsuarioMoodle, ROLES_MOODLE };

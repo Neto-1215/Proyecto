@@ -122,7 +122,7 @@ const ah = (fn) => (req, res) =>
 const MATRICULA_SELECT =
   'id,user_id,rol_moodle,estado,moodle_estado,' +
   'curso:cursos(id,nombre,moodle_course_id),' +
-  'perfil:profiles(id,email,nombre,apellidos,rol,estado,moodle_user_id)';
+  'perfil:profiles(id,email,nombre,apellidos,rol,estado,moodle_user_id,moodle_password_inicial)';
 
 const ROLES_VALIDOS = ['superadmin', 'administrador', 'coordinador', 'profesor', 'estudiante', 'aspirante', 'soporte'];
 const ESTADOS_VALIDOS = ['Pendiente', 'Activo', 'Suspendido'];
@@ -134,13 +134,15 @@ const TIPO_INSCRIPCION = 'Inscripción a curso';
 
 const texto = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
 
-// Matricula en Moodle una matrícula existente y guarda el resultado
 async function sincronizarMatricula(m) {
   try {
-    const moodleId = await asegurarUsuarioMoodle(m.perfil);
+    const { id: moodleId, password } = await asegurarUsuarioMoodle(m.perfil);
 
-    if (String(m.perfil.moodle_user_id) !== String(moodleId)) {
-      await sb.from('profiles').update({ moodle_user_id: String(moodleId) }).eq('id', m.perfil.id);
+    const cambiosPerfil = {};
+    if (String(m.perfil.moodle_user_id) !== String(moodleId)) cambiosPerfil.moodle_user_id = String(moodleId);
+    if (password) cambiosPerfil.moodle_password_inicial = password;
+    if (Object.keys(cambiosPerfil).length) {
+      await sb.from('profiles').update(cambiosPerfil).eq('id', m.perfil.id);
     }
 
     await moodle('enrol_manual_enrol_users', {
@@ -226,8 +228,10 @@ app.post('/api/moodle/sync-user', auth, soloAdmin, limiteEscritura, ah(async (re
     throw new HttpError(400, 'Solo Estudiantes y Profesores se sincronizan con Moodle.');
   if (perfil.estado !== 'Activo') throw new HttpError(400, 'El usuario aún no está autorizado (estado Activo).');
 
-  const moodleId = await asegurarUsuarioMoodle(perfil);
-  const { error } = await sb.from('profiles').update({ moodle_user_id: String(moodleId) }).eq('id', perfil.id);
+  const { id: moodleId, password } = await asegurarUsuarioMoodle(perfil);
+  const cambios = { moodle_user_id: String(moodleId) };
+  if (password) cambios.moodle_password_inicial = password;
+  const { error } = await sb.from('profiles').update(cambios).eq('id', perfil.id);
   if (error) throw error;
   res.json({ ok: true, moodle_user_id: moodleId });
 }));
@@ -317,7 +321,7 @@ app.get('/api/moodle/grade/:matricula_id', auth, ah(async (req, res) => {
 
   let data;
   try {
-    const moodleId = await asegurarUsuarioMoodle(m.perfil);
+    const { id: moodleId } = await asegurarUsuarioMoodle(m.perfil);
     data = await moodle('gradereport_user_get_grade_items', {
       courseid: m.curso.moodle_course_id,
       userid: moodleId,
@@ -387,7 +391,14 @@ app.post('/api/moodle/launch', auth, limiteEscritura, ah(async (req, res) => {
   const base = (process.env.MOODLE_URL || '').replace(/\/$/, '');
   const destino = `${base}/course/view.php?id=${Number(m.curso.moodle_course_id)}`;
 
-  res.json({ url: destino });
+  // Si tiene una contraseña inicial pendiente de mostrar, se la mandamos una sola vez
+  // y la borramos de la base de datos.
+  const password_inicial = m.perfil?.moodle_password_inicial || null;
+  if (password_inicial) {
+    await sb.from('profiles').update({ moodle_password_inicial: null }).eq('id', m.perfil.id);
+  }
+
+  res.json({ url: destino, usuario_moodle: m.perfil.email, password_inicial });
 }));
 
 // Actualiza rol, estado, programa o ámbito de un usuario, validado en el servidor
