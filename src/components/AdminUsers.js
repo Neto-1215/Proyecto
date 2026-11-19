@@ -34,6 +34,20 @@ export default function AdminUsers() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+    // Tiempo real: si se registra un usuario nuevo o cambia su rol/estado,
+  // esta pantalla se actualiza sola.
+  useEffect(() => {
+    const canal = supabase
+      .channel('profiles-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
+        load();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(canal);
+    };
+  }, [load]);
 
   const valor = (r, campo) => {
     const d = drafts[r.id];

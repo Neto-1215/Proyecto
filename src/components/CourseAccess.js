@@ -61,7 +61,20 @@ export default function CourseAccess() {
   }, [gestiona]);
 
   useEffect(() => { load(); }, [load]);
+  // Tiempo real: si se crea o cambia una matrícula (nueva inscripción,
+  // sincronización con Moodle, calificación, etc.), esta pantalla se actualiza sola.
+  useEffect(() => {
+    const canal = supabase
+      .channel('matriculas-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'matriculas' }, () => {
+        load();
+      })
+      .subscribe();
 
+    return () => {
+      supabase.removeChannel(canal);
+    };
+  }, [load]);
   /* ---------- Calificaciones del alumno, una vez cargadas sus matrículas ---------- */
   useEffect(() => {
     if (!esEstudiante && !verTabla) return;

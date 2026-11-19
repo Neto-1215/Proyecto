@@ -64,6 +64,20 @@ export default function CourseEnrollment({ onNavigate }) {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+    // Tiempo real: si cambia una solicitud, una matrícula o un usuario, esta
+  // pantalla se actualiza sola.
+  useEffect(() => {
+    const canal = supabase
+      .channel('inscripciones-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'matriculas' }, () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tramites' }, () => load())
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(canal);
+    };
+  }, [load]);
 
   const valor = (u, campo) => {
     const d = drafts[u.id];
