@@ -13,7 +13,7 @@ export function AuthProvider({ children }) {
   const loadProfile = useCallback(async (userId) => {
     const { data, error } = await supabase
       .from('profiles')
-      .select('*')
+      .select('id,email,nombre,apellidos,rol,estado,programa,ambito,moodle_user_id,created_at')
       .eq('id', userId)
       .maybeSingle();
     if (error) console.error('No se pudo cargar el perfil:', error.message);

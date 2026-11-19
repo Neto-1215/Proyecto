@@ -3,6 +3,12 @@ const crypto = require('crypto');
 const MOODLE_URL = (process.env.MOODLE_URL || '').replace(/\/$/, '');
 const MOODLE_TOKEN = process.env.MOODLE_TOKEN;
 
+// El token de Moodle no debe viajar en claro fuera de un entorno local
+if (MOODLE_URL && !/^https:\/\//i.test(MOODLE_URL) && !/^http:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/i.test(MOODLE_URL)) {
+  console.error('MOODLE_URL debe usar https:// (solo se permite http:// en localhost).');
+  process.exit(1);
+}
+
 const ROLES_MOODLE = {
   student: Number(process.env.MOODLE_ROLE_STUDENT || 5),
   teacher: Number(process.env.MOODLE_ROLE_TEACHER || 3), // editingteacher ("Teacher" en Moodle)
@@ -73,6 +79,8 @@ async function asegurarUsuarioMoodle(perfil) {
         lastname: perfil.apellidos || 'Usuario',
         email,
         auth: 'manual',
+        // La contraseña inicial es temporal: Moodle obliga a cambiarla en el primer acceso
+        preferences: [{ type: 'auth_forcepasswordchange', value: 1 }],
       },
     ],
   });

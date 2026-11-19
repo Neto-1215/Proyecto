@@ -25,7 +25,7 @@ const UserProfile = () => {
                 // Consultar la tabla 'profiles'
                 let { data: profiles, error: profileError } = await supabase
                     .from('profiles')
-                    .select('*')
+                    .select('id,email,nombre,apellidos,rol,estado,programa,ambito,moodle_user_id')
                     .eq('id', session.user.id);
 
                 if (profileError) throw profileError;
@@ -109,16 +109,15 @@ const UserProfile = () => {
                 {currentRole === 'Profesor' && (
                     <div style={{ backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', padding: '12px', borderRadius: '8px', marginTop: '5px' }}>
                         <p style={{ margin: '0 0 6px 0', color: '#166534', fontWeight: '600' }}>Datos Académicos Docentes</p>
-                        <p style={{ margin: '0 0 4px 0', fontSize: '13px', color: '#14532d' }}><strong>Departamento:</strong> Ingeniería y Sistemas</p>
-                        <p style={{ margin: 0, fontSize: '13px', color: '#14532d' }}><strong>Cédula Docente:</strong> DOC-2026-X9</p>
+                        <p style={{ margin: 0, fontSize: '13px', color: '#14532d' }}><strong>Programa:</strong> {userProfile?.programa || '—'}</p>
                     </div>
                 )}
 
                 {(currentRole === 'Estudiante' || currentRole === 'Aspirante') && (
                     <>
-                        <p><strong>Carrera:</strong> {userProfile?.carrera || 'Ingeniería Informática'}</p>
-                        <p><strong>ID Moodle:</strong> <span style={{ fontFamily: 'monospace', color: '#4f46e5' }}>{userProfile?.moodle_user_id || 'MDL-2026-001'}</span></p>
-                        <p><strong>Estado Escolar:</strong> {userProfile?.estado || 'Activo'}</p>
+                        <p><strong>Programa:</strong> {userProfile?.programa || '—'}</p>
+                        <p><strong>ID Moodle:</strong> <span style={{ fontFamily: 'monospace', color: '#4f46e5' }}>{userProfile?.moodle_user_id || 'Pendiente'}</span></p>
+                        <p><strong>Estado Escolar:</strong> {userProfile?.estado || '—'}</p>
                     </>
                 )}
             </div>

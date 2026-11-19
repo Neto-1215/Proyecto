@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const { ipKeyGenerator } = rateLimit;
 const { createClient } = require('@supabase/supabase-js');
 const { moodle, asegurarUsuarioMoodle, ROLES_MOODLE } = require('./moodle');
 
@@ -12,6 +13,7 @@ const {
   FRONTEND_URL = 'http://localhost:3000',
   PORT = 4000,
   REQUIRE_MFA = 'true', // exige sesión con segundo factor (aal2). Solo desactívalo en desarrollo.
+  TRUST_PROXY = '1', // proxies de confianza delante del backend (0 si se expone directo)
 } = process.env;
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -23,7 +25,7 @@ const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persi
 
 const app = express();
 app.disable('x-powered-by');
-app.set('trust proxy', 1);
+app.set('trust proxy', Number.isInteger(Number(TRUST_PROXY)) ? Number(TRUST_PROXY) : 1);
 app.use(helmet());
 app.use(cors({ origin: FRONTEND_URL, methods: ['GET', 'POST', 'PATCH', 'DELETE'], allowedHeaders: ['Content-Type', 'Authorization'] }));
 app.use(express.json({ limit: '20kb' }));
@@ -33,6 +35,8 @@ app.use(rateLimit({ windowMs: 60_000, limit: 120, standardHeaders: true, legacyH
 const limiteEscritura = rateLimit({
   windowMs: 60_000,
   limit: 30,
+  // Por usuario autenticado (el middleware auth corre antes); si no hay, por IP
+  keyGenerator: (req) => (req.user?.id ? `u:${req.user.id}` : ipKeyGenerator(req.ip)),
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Demasiadas solicitudes. Espera un momento.' },
@@ -134,6 +138,22 @@ const TIPO_INSCRIPCION = 'Inscripción a curso';
 
 const texto = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
 
+// Registro de auditoría. Con critico=true, si no se puede registrar se aborta la operación.
+async function auditar(actor, accion, objetivo, antes, despues, critico = false) {
+  const { error } = await sb.from('audit_log').insert({
+    actor: actor.id,
+    actor_rol: actor.rol,
+    accion,
+    objetivo: objetivo == null ? null : String(objetivo),
+    antes: antes ?? null,
+    despues: despues ?? null,
+  });
+  if (error) {
+    console.error('audit_log:', error.message);
+    if (critico) throw new HttpError(500, 'No se pudo registrar la auditoría. Operación cancelada.');
+  }
+}
+
 async function sincronizarMatricula(m) {
   try {
     const { id: moodleId, password } = await asegurarUsuarioMoodle(m.perfil);
@@ -211,6 +231,7 @@ app.post('/api/moodle/import-courses', auth, soloAdmin, limiteEscritura, ah(asyn
 
   const { error } = await sb.from('cursos').upsert(filas, { onConflict: 'moodle_course_id' });
   if (error) throw error;
+  await auditar(req.user, 'cursos_importados', null, null, { moodle_course_ids: ids, programa: prog });
   res.json({ ok: true, importados: filas.length });
 }));
 
@@ -233,6 +254,7 @@ app.post('/api/moodle/sync-user', auth, soloAdmin, limiteEscritura, ah(async (re
   if (password) cambios.moodle_password_inicial = password;
   const { error } = await sb.from('profiles').update(cambios).eq('id', perfil.id);
   if (error) throw error;
+  await auditar(req.user, 'moodle_usuario_sincronizado', perfil.id, null, { moodle_user_id: String(moodleId) });
   res.json({ ok: true, moodle_user_id: moodleId });
 }));
 
@@ -241,6 +263,7 @@ app.post('/api/matriculas', auth, soloAdmin, limiteEscritura, ah(async (req, res
   const user_id = exigirUuid((req.body || {}).user_id, 'user_id');
   const curso_id = exigirId((req.body || {}).curso_id, 'curso_id');
   const m = await crearMatricula(user_id, curso_id);
+  if (!m.existente) await auditar(req.user, 'matricula_creada', user_id, null, { matricula_id: m.id, curso_id });
   res.json(m);
 }));
 
@@ -288,6 +311,7 @@ app.post('/api/moodle/enrol', auth, soloAdmin, limiteEscritura, ah(async (req, r
     throw new HttpError(400, 'El curso no tiene ID de Moodle. Impórtalo desde "API de Moodle".');
 
   const moodleId = await sincronizarMatricula(m);
+  await auditar(req.user, 'matricula_sincronizada', m.user_id, null, { matricula_id: m.id, curso_id: m.curso.id });
   res.json({ ok: true, moodle_user_id: moodleId });
 }));
 
@@ -367,6 +391,7 @@ app.post('/api/moodle/unenrol', auth, soloAdmin, limiteEscritura, ah(async (req,
 
   const { error } = await sb.from('matriculas').delete().eq('id', m.id);
   if (error) throw error;
+  await auditar(req.user, 'matricula_eliminada', m.user_id, { matricula_id: m.id, curso_id: m.curso?.id }, null);
   res.json({ ok: true });
 }));
 
@@ -391,12 +416,21 @@ app.post('/api/moodle/launch', auth, limiteEscritura, ah(async (req, res) => {
   const base = (process.env.MOODLE_URL || '').replace(/\/$/, '');
   const destino = `${base}/course/view.php?id=${Number(m.curso.moodle_course_id)}`;
 
-  // Si tiene una contraseña inicial pendiente de mostrar, se la mandamos una sola vez
-  // y la borramos de la base de datos.
-  const password_inicial = m.perfil?.moodle_password_inicial || null;
-  if (password_inicial) {
-    await sb.from('profiles').update({ moodle_password_inicial: null }).eq('id', m.perfil.id);
+  // Si tiene una contraseña inicial pendiente de mostrar, se borra de la base de datos
+  // ANTES de entregarla: si el borrado falla, no se envía (nunca queda guardada y entregada a la vez).
+  let password_inicial = null;
+  if (m.perfil?.moodle_password_inicial) {
+    const { data: borrada, error: errBorrar } = await sb
+      .from('profiles')
+      .update({ moodle_password_inicial: null })
+      .eq('id', m.perfil.id)
+      .eq('moodle_password_inicial', m.perfil.moodle_password_inicial)
+      .select('id');
+    if (errBorrar) throw errBorrar;
+    // Solo se entrega si esta petición fue quien la consumió (evita entregas dobles en carreras)
+    if (borrada && borrada.length > 0) password_inicial = m.perfil.moodle_password_inicial;
   }
+  res.set('Cache-Control', 'no-store');
 
   res.json({ url: destino, usuario_moodle: m.perfil.email, password_inicial });
 }));
@@ -466,15 +500,7 @@ app.patch('/api/users/:id', auth, requireRol('superadmin', 'administrador', 'coo
 
   const antes = {};
   Object.keys(cambios).forEach((k) => { antes[k] = objetivo[k]; });
-  const { error: errAudit } = await sb.from('audit_log').insert({
-    actor: actor.id,
-    actor_rol: actor.rol,
-    accion: 'usuario_actualizado',
-    objetivo: id,
-    antes,
-    despues: cambios,
-  });
-  if (errAudit) console.error('audit_log:', errAudit.message);
+  await auditar(actor, 'usuario_actualizado', id, antes, cambios);
 
   res.json({ ok: true, perfil: data });
 }));
@@ -534,6 +560,7 @@ app.post('/api/tramites/:id/resolver', auth, soloAdmin, limiteEscritura, ah(asyn
       .update({ estado: 'Rechazado', respuesta: 'Solicitud de inscripción rechazada.' })
       .eq('id', id);
     if (error) throw error;
+    await auditar(req.user, 'inscripcion_rechazada', t.user_id, null, { tramite_id: id, curso_id: t.curso_id });
     return res.json({ ok: true });
   }
 
@@ -558,6 +585,7 @@ app.post('/api/tramites/:id/resolver', auth, soloAdmin, limiteEscritura, ah(asyn
     .update({ estado: 'Entregado', respuesta: 'Acceso otorgado al curso.' })
     .eq('id', id);
   if (error) throw error;
+  await auditar(req.user, 'inscripcion_aprobada', t.user_id, null, { tramite_id: id, curso_id: t.curso_id, matricula_id: matriculaId });
   res.json({ ok: true, aviso });
 }));
 
@@ -578,7 +606,40 @@ app.delete('/api/users/:id', auth, requireRol('superadmin'), limiteEscritura, ah
     throw new HttpError(400, 'No se puede eliminar a un Superadministrador. Cámbiale el rol primero.');
   }
 
-  // Moodle: se suspende la cuenta (no se borra) para conservar calificaciones y evidencias
+  // 1) Auditoría primero y obligatoria: si no se puede registrar, no se borra nada
+  await auditar(
+    req.user,
+    'usuario_eliminado',
+    id,
+    {
+      email: objetivo.email,
+      nombre: `${objetivo.nombre || ''} ${objetivo.apellidos || ''}`.trim(),
+      rol: objetivo.rol,
+      estado: objetivo.estado,
+      programa: objetivo.programa,
+      moodle_user_id: objetivo.moodle_user_id,
+    },
+    null,
+    true
+  );
+
+  // 2) Se elimina primero la cuenta de acceso: corta el login de inmediato y, si falla,
+  //    no se ha tocado nada más (sin cuentas a medias).
+  const { error: errAuth } = await sb.auth.admin.deleteUser(id);
+  if (errAuth) {
+    console.error('deleteUser:', errAuth.message);
+    throw new HttpError(500, 'No se pudo eliminar la cuenta de acceso. No se hizo ningún cambio.');
+  }
+
+  // 3) Se borra el perfil (matrículas y trámites se eliminan en cascada)
+  const { error: errPerfil } = await sb.from('profiles').delete().eq('id', id);
+  if (errPerfil) {
+    console.error('delete profile:', errPerfil.message);
+    throw new HttpError(500, 'La cuenta de acceso se eliminó, pero el perfil no. Avisa al administrador técnico.');
+  }
+
+  // 4) Moodle: se suspende la cuenta (no se borra) para conservar calificaciones y evidencias.
+  //    Va al final para no suspender a alguien que no llegó a eliminarse.
   let moodleResultado = 'sin cuenta';
   let moodleAviso = null;
   if (objetivo.moodle_user_id && /^\d+$/.test(String(objetivo.moodle_user_id))) {
@@ -590,36 +651,8 @@ app.delete('/api/users/:id', auth, requireRol('superadmin'), limiteEscritura, ah
     } catch (e) {
       console.error('delete user (moodle):', e.message);
       moodleResultado = 'error';
-      moodleAviso = 'No se pudo suspender la cuenta en Moodle.';
+      moodleAviso = 'No se pudo suspender la cuenta en Moodle. Suspéndela manualmente.';
     }
-  }
-
-  // Auditoría antes de borrar
-  await sb.from('audit_log').insert({
-    actor: req.user.id,
-    actor_rol: req.user.rol,
-    accion: 'usuario_eliminado',
-    objetivo: id,
-    antes: {
-      email: objetivo.email,
-      nombre: `${objetivo.nombre || ''} ${objetivo.apellidos || ''}`.trim(),
-      rol: objetivo.rol,
-      estado: objetivo.estado,
-      programa: objetivo.programa,
-      moodle_user_id: objetivo.moodle_user_id,
-      moodle: moodleResultado,
-    },
-    despues: null,
-  });
-
-  // Se borra el perfil (matrículas y trámites se eliminan en cascada) y después la cuenta de acceso
-  const { error: errPerfil } = await sb.from('profiles').delete().eq('id', id);
-  if (errPerfil) throw errPerfil;
-
-  const { error: errAuth } = await sb.auth.admin.deleteUser(id);
-  if (errAuth) {
-    console.error('deleteUser:', errAuth.message);
-    throw new HttpError(500, 'Se borró el perfil, pero no la cuenta de acceso. Avisa al administrador técnico.');
   }
 
   res.json({ ok: true, moodle: moodleResultado, moodle_aviso: moodleAviso });
