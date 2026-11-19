@@ -366,7 +366,9 @@ app.post('/api/moodle/unenrol', auth, soloAdmin, limiteEscritura, ah(async (req,
   res.json({ ok: true });
 }));
 
-// Acceso directo al curso (SSO): devuelve una URL de Moodle que inicia sesión sola
+// Acceso directo al curso: lleva al usuario a la página del curso en Moodle.
+// MoodleCloud no permite el plugin de login automático (auth_userkey), así que
+// el usuario inicia sesión en Moodle con su propio usuario/contraseña si no lo ha hecho.
 app.post('/api/moodle/launch', auth, limiteEscritura, ah(async (req, res) => {
   if (req.user.estado !== 'Activo') throw new HttpError(403, 'Tu cuenta no está activa.');
   const matricula_id = exigirId((req.body || {}).matricula_id, 'matricula_id');
@@ -385,28 +387,7 @@ app.post('/api/moodle/launch', auth, limiteEscritura, ah(async (req, res) => {
   const base = (process.env.MOODLE_URL || '').replace(/\/$/, '');
   const destino = `${base}/course/view.php?id=${Number(m.curso.moodle_course_id)}`;
 
-  let r;
-  try {
-    r = await moodle('auth_userkey_request_login_url', {
-      user: { email: String(m.perfil.email).toLowerCase() },
-    });
-  } catch (e) {
-    console.error('launch:', e.message);
-    throw new HttpError(502, 'No se pudo generar el acceso directo a Moodle.');
-  }
-  if (!r?.loginurl) throw new HttpError(502, 'Moodle no devolvió la URL de acceso (revisa el plugin userkey).');
-
-  // La URL debe apuntar al propio Moodle configurado (evita redirecciones a otros sitios)
-  let loginUrl;
-  try {
-    loginUrl = new URL(r.loginurl);
-  } catch {
-    throw new HttpError(502, 'Moodle devolvió una URL inválida.');
-  }
-  if (loginUrl.origin !== new URL(base).origin) throw new HttpError(502, 'Moodle devolvió una URL no confiable.');
-
-  loginUrl.searchParams.set('wantsurl', destino);
-  res.json({ url: loginUrl.toString() });
+  res.json({ url: destino });
 }));
 
 // Actualiza rol, estado, programa o ámbito de un usuario, validado en el servidor
