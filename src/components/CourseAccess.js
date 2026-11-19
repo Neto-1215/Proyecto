@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { api } from '../lib/api';
-import { abrirCampus } from '../lib/campus';
+import { obtenerAccesoCampus, irACampus } from '../lib/campus';
 import { useAuth } from '../context/AuthContext';
 import { canManageEnrollments } from '../lib/permissions';
 
@@ -147,12 +147,19 @@ export default function CourseAccess() {
     setBusyId(null);
   };
 
+    const [credenciales, setCredenciales] = useState(null);
+
   const entrar = async (id) => {
     setBusyId(id);
     setMsg('');
     setErr('');
     try {
-      await abrirCampus(id);
+      const { url, usuario_moodle, password_inicial } = await obtenerAccesoCampus(id);
+      if (password_inicial) {
+        setCredenciales({ usuario: usuario_moodle, password: password_inicial, url });
+      } else {
+        irACampus(url);
+      }
     } catch (e) {
       setErr(e.message);
     }
@@ -309,6 +316,32 @@ export default function CourseAccess() {
               )}
             </article>
           ))}
+        </div>
+      )}
+      {credenciales && (
+        <div className="doc-overlay">
+          <div
+            className="doc-overlay__backdrop"
+            onClick={() => setCredenciales(null)}
+          />
+          <div className="doc-sheet" style={{ maxWidth: 420 }}>
+            <h3>Tus datos de acceso a Moodle</h3>
+            <p>Es tu primera vez entrando al campus. Guarda estos datos — podrás cambiar tu contraseña después dentro de Moodle.</p>
+            <p>
+              <strong>Usuario:</strong> {credenciales.usuario}
+              <br />
+              <strong>Contraseña:</strong> {credenciales.password}
+            </p>
+            <button
+              className="btn btn--primary btn--sm"
+              onClick={() => {
+                irACampus(credenciales.url);
+                setCredenciales(null);
+              }}
+            >
+              Entendido, ir al campus
+            </button>
+          </div>
         </div>
       )}
     </div>
