@@ -93,17 +93,12 @@ const AuthForm = ({ initialMode = 'login', onModeChange, onLoginSuccess }) => {
 
         if (signUpError) throw signUpError;
 
-        if (data?.session) {
-          if (onLoginSuccess) onLoginSuccess();
-          return;
-        }
-
         setIsSignUp(false);
         if (onModeChange) onModeChange('login');
         setPassword('');
         setConfirmPassword('');
         setMessage(
-          '¡Registro exitoso! Confirma tu correo si te llega un mensaje. Un administrador revisará y autorizará tu acceso.'
+          '¡Tu cuenta se registró correctamente! Inicia sesión con tu correo y contraseña para continuar. Un administrador revisará y autorizará tu acceso.'
         );
       } else {
         // 1) Valida la contraseña con un cliente temporal (no inicia sesión en el portal)
@@ -222,9 +217,10 @@ const AuthForm = ({ initialMode = 'login', onModeChange, onLoginSuccess }) => {
       <div className="auth">
         <h2>Activa la verificación en dos pasos</h2>
         <p className="auth__sub">
-          1) Abre <strong>Google Authenticator</strong>, Microsoft Authenticator o Authy en tu teléfono.<br />
-          2) Escanea este código QR.<br />
-          3) Escribe el código de 6 dígitos que muestre la app.
+          1) Vamos a usar la app <strong>Google Authenticator</strong> para generar tu código de verificación.
+          Si no la tienes instalada en tu teléfono, descárgala ahora desde la App Store o Google Play — la vas a necesitar para iniciar sesión.<br />
+          2) Abre la app y escanea este código QR.<br />
+          3) Escribe el código de 6 dígitos que te muestre la app.
         </p>
 
         {error && <div className="alert alert--error">{error}</div>}
