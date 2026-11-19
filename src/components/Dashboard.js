@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { ROLES } from '../lib/permissions';
-import { abrirCampus } from '../lib/campus';
+import { obtenerAccesoCampus, irACampus } from '../lib/campus';
 import Icon from './Icon';
 
 const MOODLE_URL = process.env.REACT_APP_MOODLE_URL;
@@ -89,9 +89,22 @@ export default function Dashboard({ onNavigate }) {
   const [pendientes, setPendientes] = useState([]);
   const [err, setErr] = useState('');
   const [grades, setGrades] = useState({});
+  const [credenciales, setCredenciales] = useState(null);
 
   const ir = (tab) => {
     if (onNavigate && can(tab)) onNavigate(tab);
+  };
+  const entrarAlCampus = async (matriculaId) => {
+    try {
+      const { url, usuario_moodle, password_inicial } = await obtenerAccesoCampus(matriculaId);
+      if (password_inicial) {
+        setCredenciales({ url, usuario: usuario_moodle, password: password_inicial });
+      } else {
+        irACampus(url);
+      }
+    } catch (e) {
+      setErr(e.message);
+    }
   };
 
   useEffect(() => {
@@ -303,7 +316,7 @@ export default function Dashboard({ onNavigate }) {
                       {MOODLE_URL && m.curso?.moodle_course_id && m.moodle_estado === 'Sincronizada' ? (
                         <button
                           className="btn btn--primary btn--xs"
-                          onClick={() => abrirCampus(m.id).catch((e) => setErr(e.message))}
+                          onClick={() => entrarAlCampus(m.id)}
                         >
                           Acceder al campus
                         </button>
@@ -402,6 +415,32 @@ export default function Dashboard({ onNavigate }) {
             </section>
           )}
         </>
+      )}
+      {credenciales && (
+        <div className="doc-overlay" role="dialog" aria-modal="true">
+          <div className="doc-overlay__backdrop" onClick={() => { setCredenciales(null); }} />
+          <div className="doc-sheet" style={{ maxWidth: 420 }}>
+            <h3>Acceso al campus Moodle</h3>
+            <p>Esta es tu contraseña inicial. Guárdala, no se volverá a mostrar.</p>
+            <p><strong>Usuario:</strong> {credenciales.usuario}</p>
+            <p><strong>Contraseña:</strong> {credenciales.password}</p>
+            <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+              <button
+                className="btn btn--primary"
+                onClick={() => {
+                  const url = credenciales.url;
+                  setCredenciales(null);
+                  irACampus(url);
+                }}
+              >
+                Ir al campus
+              </button>
+              <button className="btn btn--light" onClick={() => setCredenciales(null)}>
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
