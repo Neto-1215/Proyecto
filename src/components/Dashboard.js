@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
@@ -107,61 +107,75 @@ export default function Dashboard({ onNavigate }) {
     }
   };
 
-  useEffect(() => {
-    let activo = true;
-
-    (async () => {
-      setLoading(true);
-      setErr('');
-      try {
-        if (esAlumno || esAspirante) {
-          const { data, error } = await supabase
-            .from('matriculas')
-            .select('id,rol_moodle,moodle_estado,curso:cursos(id,nombre,programa,moodle_course_id)')
-            .order('created_at', { ascending: false });
-          if (error) throw error;
-          if (activo) setMats(data || []);
-        }
-
-        if (esStaff) {
-          const conteo = (tabla, filtro) => {
-            let q = supabase.from(tabla).select('id', { count: 'exact', head: true });
-            if (filtro) q = filtro(q);
-            return q;
-          };
-
-          const [u, p, c, e, lista] = await Promise.all([
-            conteo('profiles'),
-            conteo('profiles', (q) => q.eq('estado', 'Pendiente')),
-            conteo('cursos'),
-            conteo('matriculas', (q) => q.eq('moodle_estado', 'Error')),
-            supabase
-              .from('profiles')
-              .select('id,nombre,apellidos,email,rol,created_at')
-              .eq('estado', 'Pendiente')
-              .order('created_at', { ascending: false })
-              .limit(5),
-          ]);
-
-          if (activo) {
-            setStats({
-              usuarios: u.count ?? 0,
-              pendientes: p.count ?? 0,
-              cursos: c.count ?? 0,
-              errores: e.count ?? 0,
-            });
-            setPendientes(lista.data || []);
-          }
-        }
-      } catch (e) {
-        if (activo) setErr(e.message);
+   const load = useCallback(async () => {
+    setLoading(true);
+    setErr('');
+    try {
+      if (esAlumno || esAspirante) {
+        const { data, error } = await supabase
+          .from('matriculas')
+          .select('id,rol_moodle,moodle_estado,curso:cursos(id,nombre,programa,moodle_course_id)')
+          .order('created_at', { ascending: false });
+        if (error) throw error;
+        setMats(data || []);
       }
-      if (activo) setLoading(false);
-    })();
 
-    return () => { activo = false; };
+      if (esStaff) {
+        const conteo = (tabla, filtro) => {
+          let q = supabase.from(tabla).select('id', { count: 'exact', head: true });
+          if (filtro) q = filtro(q);
+          return q;
+        };
+
+        const [u, p, c, e, lista] = await Promise.all([
+          conteo('profiles'),
+          conteo('profiles', (q) => q.eq('estado', 'Pendiente')),
+          conteo('cursos'),
+          conteo('matriculas', (q) => q.eq('moodle_estado', 'Error')),
+          supabase
+            .from('profiles')
+            .select('id,nombre,apellidos,email,rol,created_at')
+            .eq('estado', 'Pendiente')
+            .order('created_at', { ascending: false })
+            .limit(5),
+        ]);
+
+        setStats({
+          usuarios: u.count ?? 0,
+          pendientes: p.count ?? 0,
+          cursos: c.count ?? 0,
+          errores: e.count ?? 0,
+        });
+        setPendientes(lista.data || []);
+      }
+    } catch (e) {
+      setErr(e.message);
+    }
+    setLoading(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rol]);
+  }, [esAlumno, esAspirante, esStaff]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  useEffect(() => {
+    const canal = supabase
+      .channel('dashboard-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
+        load();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'matriculas' }, () => {
+        load();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cursos' }, () => {
+        load();
+      })
+      .subscribe();
+    return () => {
+      supabase.removeChannel(canal);
+    };
+  }, [load]);
 
   useEffect(() => {
     if (rol !== 'estudiante') return;
