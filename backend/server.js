@@ -12,8 +12,9 @@ const {
   SUPABASE_SERVICE_ROLE_KEY,
   FRONTEND_URL = 'http://localhost:3000',
   PORT = 4000,
-  REQUIRE_MFA = 'true', // exige sesión con segundo factor (aal2). Solo desactívalo en desarrollo.
-  TRUST_PROXY = '1', // proxies de confianza delante del backend (0 si se expone directo)
+  REQUIRE_MFA = 'true',
+  TRUST_PROXY = '1',
+  GEMINI_API_KEY,
 } = process.env;
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -657,6 +658,51 @@ app.delete('/api/users/:id', auth, requireRol('superadmin'), limiteEscritura, ah
 
   res.json({ ok: true, moodle: moodleResultado, moodle_aviso: moodleAviso });
 }));
+
+// Chatbot con Gemini: responde preguntas generales sobre el portal
+app.post('/api/chat', auth, limiteEscritura, ah(async (req, res) => {
+  if (!GEMINI_API_KEY) throw new HttpError(503, 'El asistente no está configurado.');
+
+  const mensaje = texto((req.body || {}).mensaje, 2000);
+  if (!mensaje) throw new HttpError(400, 'Falta el mensaje.');
+
+  const systemPrompt =
+    'Eres el asistente virtual del portal IINICIA (Instituto de Innovación y Ciencias Aplicadas). ' +
+    'Ayudas a estudiantes, profesores y administradores con preguntas sobre trámites escolares, ' +
+    'inscripción a cursos, el uso de Google Authenticator para la verificación en dos pasos, y cómo ' +
+    'acceder a Moodle. Responde en español, de forma breve y clara. Si no sabes algo específico de ' +
+    'este usuario, sugiere que use la sección de Trámites o contacte a un administrador.';
+
+  let resp;
+  try {
+    resp = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: systemPrompt }] },
+          contents: [{ role: 'user', parts: [{ text: mensaje }] }],
+        }),
+      }
+    );
+  } catch (e) {
+    console.error('chat (red):', e.message);
+    throw new HttpError(502, 'No se pudo contactar al asistente.');
+  }
+
+  if (!resp.ok) {
+    console.error('chat (gemini):', resp.status, await resp.text());
+    throw new HttpError(502, 'El asistente no pudo responder. Inténtalo de nuevo.');
+  }
+
+  const data = await resp.json();
+  const respuesta = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || 'No pude generar una respuesta.';
+  res.json({ respuesta });
+}));
+
+// Rutas inexistentes
+app.use((req, res) => res.status(404).json({ error: 'No encontrado.' }));
 
 // Rutas inexistentes
 app.use((req, res) => res.status(404).json({ error: 'No encontrado.' }));
