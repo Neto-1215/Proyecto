@@ -130,6 +130,22 @@ export default function SchoolServices() {
 
   useEffect(() => { loadCursos(); }, [loadCursos]);
 
+    useEffect(() => {
+    const canal = supabase
+      .channel('tramites-cursos-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'matriculas' }, () => {
+        loadCursos();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cursos' }, () => {
+        loadCursos();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(canal);
+    };
+  }, [loadCursos]);
+
   const idsConSolicitudAbierta = useMemo(
     () =>
       new Set(
