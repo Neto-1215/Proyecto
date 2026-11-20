@@ -58,6 +58,26 @@ export function AuthProvider({ children }) {
     };
   }, [loadProfile]);
 
+    useEffect(() => {
+    const uid = session?.user?.id;
+    if (!uid) return;
+
+    const canal = supabase
+      .channel(`profile-${uid}-realtime`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'profiles', filter: `id=eq.${uid}` },
+        () => {
+          loadProfile(uid);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(canal);
+    };
+  }, [session?.user?.id, loadProfile]);
+
   // Sin perfil o rol desconocido: el rol más bajo (mínimo privilegio)
   const rol = session ? normalizeRol(profile?.rol) : null;
   const estado = profile?.estado || null;
