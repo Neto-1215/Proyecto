@@ -13,6 +13,8 @@ import SchoolServices from './components/SchoolServices';
 import AdminUsers from './components/AdminUsers';
 import CourseAccess from './components/CourseAccess';
 import AuditLog from './components/AuditLog';
+import AuditLog from './components/AuditLog';
+import ChatBubble from './components/ChatBubble';
 
 /* ---------- Datos ---------- */
 // Menú completo; cada rol solo ve lo que permissions.js le autoriza
@@ -440,6 +442,8 @@ function Shell() {
           <span>Instituto de Innovación y Ciencias Aplicadas &bull; Entorno de Pruebas</span>
         </footer>
       </div>
+
+      {session && !suspended && <ChatBubble />}
     </div>
   );
 }
