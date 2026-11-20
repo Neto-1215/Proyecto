@@ -13,7 +13,6 @@ import SchoolServices from './components/SchoolServices';
 import AdminUsers from './components/AdminUsers';
 import CourseAccess from './components/CourseAccess';
 import AuditLog from './components/AuditLog';
-import AuditLog from './components/AuditLog';
 import ChatBubble from './components/ChatBubble';
 
 /* ---------- Datos ---------- */
