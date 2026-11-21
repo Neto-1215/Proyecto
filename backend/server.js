@@ -14,7 +14,6 @@ const {
   PORT = 4000,
   REQUIRE_MFA = 'true',
   TRUST_PROXY = '1',
-  GEMINI_API_KEY,
 } = process.env;
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -657,64 +656,6 @@ app.delete('/api/users/:id', auth, requireRol('superadmin'), limiteEscritura, ah
   }
 
   res.json({ ok: true, moodle: moodleResultado, moodle_aviso: moodleAviso });
-}));
-
-  async function llamarGemini(mensaje, systemPrompt, intentos = 2) {
-  for (let i = 0; i < intentos; i++) {
-    let resp;
-    try {
-      resp = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${GEMINI_API_KEY}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            systemInstruction: { parts: [{ text: systemPrompt }] },
-            contents: [{ role: 'user', parts: [{ text: mensaje }] }],
-          }),
-        }
-      );
-    } catch (e) {
-      console.error('chat (red):', e.message);
-      throw new HttpError(502, 'No se pudo contactar al asistente.');
-    }
-
-    if (resp.ok) return resp.json();
-
-    const detalle = await resp.text();
-    const esSaturado = resp.status === 503 || resp.status === 429;
-    console.error('chat (gemini):', resp.status, detalle);
-
-    if (esSaturado && i < intentos - 1) {
-      await new Promise((r) => setTimeout(r, 1200));
-      continue;
-    }
-    throw new HttpError(
-      esSaturado ? 503 : 502,
-      esSaturado
-        ? 'El asistente está muy solicitado en este momento. Intenta de nuevo en unos segundos.'
-        : 'El asistente no pudo responder. Inténtalo de nuevo.'
-    );
-  }
-}
-
-// Chatbot con Gemini: responde preguntas generales sobre el portal
-app.post('/api/chat', auth, limiteEscritura, ah(async (req, res) => {
-  if (!GEMINI_API_KEY) throw new HttpError(503, 'El asistente no está configurado.');
-
-  const mensaje = texto((req.body || {}).mensaje, 2000);
-  if (!mensaje) throw new HttpError(400, 'Falta el mensaje.');
-
-  const systemPrompt =
-    'Eres el asistente virtual del portal IINICIA (Instituto de Innovación y Ciencias Aplicadas). ' +
-    'Ayudas a estudiantes, profesores y administradores con preguntas sobre trámites escolares, ' +
-    'inscripción a cursos, el uso de Google Authenticator para la verificación en dos pasos, y cómo ' +
-    'acceder a Moodle. Responde en español, de forma breve y clara. Si no sabes algo específico de ' +
-    'este usuario, sugiere que use la sección de Trámites o contacte a un administrador.';
-
-  const data = await llamarGemini(mensaje, systemPrompt);
-  const respuesta = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || 'No pude generar una respuesta.';
-  res.json({ respuesta });
 }));
 
 // Rutas inexistentes
