@@ -750,19 +750,23 @@ h1, h2, h3 { font-family: 'Poppins', sans-serif; font-weight: 800; }
 .navbar {
   display: flex; justify-content: space-between; align-items: center;
   padding: 12px 30px;
-  background: var(--blanco-glass); backdrop-filter: blur(12px);
+  background: linear-gradient(135deg, #3b82f6, #1d5fd6);
   position: fixed; width: 90%; max-width: 1200px; top: 20px; left: 50%; transform: translateX(-50%);
-  z-index: 1000; border-radius: 50px; border: 1px solid rgba(255, 255, 255, 0.5);
-  box-shadow: 0 10px 30px rgba(11, 125, 240, 0.08);
+  z-index: 1000; border-radius: 50px; border: 1px solid rgba(255, 255, 255, 0.35);
+  box-shadow: 0 10px 30px rgba(29, 95, 214, 0.25);
 }
-.navbar__logo { height: 42px; cursor: pointer; }
+.navbar__logo { height: 52px; margin: -6px 0; cursor: pointer; }
 .navbar__links { display: flex; gap: 18px; align-items: center; }
 .navbar__link {
   border: none; background: none; cursor: pointer;
-  font-size: 14px; font-weight: 600; color: var(--oscuro);
+  font-size: 14px; font-weight: 600; color: #fff;
   padding: 8px 4px;
 }
-.navbar__link:hover { color: var(--azul-fuerte); }
+.navbar__link:hover { color: #dbeafe; }
+.navbar .btn--primary { background: #fff; color: #1d5fd6; box-shadow: none; }
+.navbar .btn--primary:hover { background: #e0f2fe; box-shadow: none; }
+.navbar .btn--light { background: transparent; color: #fff; border-color: rgba(255, 255, 255, 0.7); }
+.navbar .btn--light:hover { background: rgba(255, 255, 255, 0.18); color: #fff; }
 
 @media (max-width: 760px) {
   .navbar { flex-direction: column; gap: 12px; padding: 16px; border-radius: 24px; width: 94%; }
