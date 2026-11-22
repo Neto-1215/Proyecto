@@ -658,6 +658,20 @@ app.delete('/api/users/:id', auth, requireRol('superadmin'), limiteEscritura, ah
   res.json({ ok: true, moodle: moodleResultado, moodle_aviso: moodleAviso });
 }));
 
+// Información pública para el asistente de orientación (sin datos sensibles, sin sesión)
+app.get('/api/asistente/contexto', ah(async (req, res) => {
+  const { data: cursos, error } = await sb
+    .from('cursos')
+    .select('nombre,programa')
+    .eq('activo', true)
+    .order('nombre');
+  if (error) throw error;
+  res.json({ cursos: cursos || [] });
+}));
+
+// Rutas inexistentes
+app.use((req, res) => res.status(404).json({ error: 'No encontrado.' }));
+
 // Rutas inexistentes
 app.use((req, res) => res.status(404).json({ error: 'No encontrado.' }));
 
