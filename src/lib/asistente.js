@@ -16,7 +16,7 @@ export const TEMAS = [
     id: 'registro',
     titulo: 'Cómo crear mi cuenta',
     icon: 'user',
-    publico: true,
+    soloInvitado: true,
     palabras: ['registro', 'registrarme', 'crear cuenta', 'cuenta nueva', 'aspirante'],
     texto: () =>
       'Ve a "Registrarme", ingresa tu correo y una contraseña. Al registrarte quedas como Aspirante; un administrador revisará tu solicitud y te asignará tu rol y programa antes de darte acceso completo.',
@@ -25,7 +25,7 @@ export const TEMAS = [
     id: 'login',
     titulo: 'Iniciar sesión y verificación en dos pasos',
     icon: 'login',
-    publico: true,
+    soloInvitado: true,
     palabras: ['login', 'iniciar sesion', 'entrar', 'contraseña', 'password', '2fa', 'dos pasos', 'autenticador', 'google authenticator'],
     texto: () =>
       'Inicia sesión con tu correo y contraseña. Tu cuenta usa verificación en dos pasos (2FA): necesitarás el código de una app como Google Authenticator además de tu contraseña. Si no la has configurado, el sistema te guía la primera vez.',
@@ -81,6 +81,7 @@ const normalizar = (s) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toL
 
 export function temasVisibles(temas, { session, rol, can }) {
   return temas.filter((t) => {
+    if (t.soloInvitado) return !session;
     if (!session) return !!t.publico;
     if (t.roles && !t.roles.includes(rol)) return false;
     if (t.accion && can && !can(t.accion().tab)) return false;
