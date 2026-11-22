@@ -67,6 +67,18 @@ const STEPS = [
   { n: 3, title: 'Aprende a tu ritmo', text: 'Accede a los cursos en los que tengas matrícula válida.' },
 ];
 
+const PILARES = [
+  { icon: 'cap', title: 'Formación aplicada', text: 'Programas enfocados en ciencias aplicadas, con proyectos y casos reales.' },
+  { icon: 'layers', title: 'Todo en un solo lugar', text: 'Tu aula, tus trámites y tu avance académico, integrados en el mismo portal.' },
+  { icon: 'book', title: 'Sigue tu avance', text: 'Consulta tu calificación y el estado de tus trámites en cualquier momento.' },
+];
+
+const WHY_US = [
+  { title: 'Acceso cuidado', text: 'Verificación en dos pasos y revisión de cada solicitud de ingreso por un administrador.' },
+  { title: 'Integración con Moodle', text: 'Entra directo a tu campus virtual desde el portal, sin pasos adicionales.' },
+  { title: 'Para cada rol', text: 'Estudiantes, profesores, coordinadores y administradores, cada uno con su propio panel.' },
+];
+
 function Shell() {
   const { session, user, profile, rol, estado, suspended, loading, can } = useAuth();
 
@@ -321,7 +333,10 @@ function Shell() {
             <>
               <section className="hero">
                 <div className="hero__text">
-                  <h1>Formación aplicada que te acompaña donde estés.</h1>
+                  <span className="chip">Universidad IINICIA</span>
+                  <h1>
+                    Tu educación comienza hoy, <span>estés donde estés.</span>
+                  </h1>
                   <p>El conocimiento que transforma tu vida está a tu alcance, en todo momento.</p>
                   <div className="hero__actions">
                     {session ? (
@@ -348,20 +363,20 @@ function Shell() {
                   </div>
                 </div>
 
-                {/* Diagrama: los pilares del instituto conectados a un núcleo */}
                 <div className="visual" aria-hidden="true">
-                  <div className="diagram">
-                    <svg className="diagram__lines" viewBox="0 0 400 420" preserveAspectRatio="none">
-                      <line x1="200" y1="210" x2="90" y2="90" />
-                      <line x1="200" y1="210" x2="310" y2="110" />
-                      <line x1="200" y1="210" x2="80" y2="320" />
-                      <line x1="200" y1="210" x2="300" y2="330" />
-                    </svg>
-                    <span className="diagram__hub">IINICIA</span>
-                    <span className="diagram__node" style={{ top: '21%', left: '22%' }}>Docencia</span>
-                    <span className="diagram__node" style={{ top: '26%', left: '78%' }}>Investigación</span>
-                    <span className="diagram__node" style={{ top: '76%', left: '20%' }}>Comunidad</span>
-                    <span className="diagram__node diagram__node--accent" style={{ top: '79%', left: '75%' }}>Innovación</span>
+                  <div className="blob" />
+                  <div className="float-card fc-a">
+                    <small>Tu progreso</small>
+                    <strong>Curso de ejemplo</strong>
+                    <div className="bar"><b style={{ width: '72%' }} /></div>
+                    <em>72% completado</em>
+                  </div>
+                  <div className="float-card fc-b">
+                    <span className="badge-ok"><Icon name="check" /></span>
+                    <div>
+                      <strong>Constancia lista</strong>
+                      <small>Descárgala en Trámites</small>
+                    </div>
                   </div>
                 </div>
               </section>
@@ -370,6 +385,9 @@ function Shell() {
               {!loading && (
                 <section className="block">
                   <h2>{session ? `Lo que puedes hacer como ${rolLabel.toLowerCase()}` : 'Empieza hoy en IINICIA'}</h2>
+                  <p className="block__sub">
+                    {session ? 'Entra directo a lo que necesitas desde tu portal.' : 'Todo lo que necesitas para empezar tu proceso de admisión.'}
+                  </p>
 
                   <div className="bento">
                     {session ? (
@@ -382,7 +400,7 @@ function Shell() {
                           <span className="cell__icon"><Icon name={c.icon} /></span>
                           <h3>{c.title}</h3>
                           <p>{c.text}</p>
-                          <span className="cell__go">{c.cta}</span>
+                          <span className="cell__go">{c.cta} <Icon name="arrow" /></span>
                         </button>
                       ))
                     ) : (
@@ -391,19 +409,50 @@ function Shell() {
                           <span className="cell__icon"><Icon name="user" /></span>
                           <h3>Crea tu cuenta</h3>
                           <p>Regístrate con tu correo y comienza tu proceso de admisión.</p>
-                          <span className="cell__go">Registrarme</span>
+                          <span className="cell__go">Registrarme <Icon name="arrow" /></span>
                         </button>
                         <button className="cell c-wide" onClick={() => goAuth('login')}>
                           <span className="cell__icon"><Icon name="login" /></span>
                           <h3>Ya tengo cuenta</h3>
                           <p>Accede a tu panel, tus cursos y tus trámites.</p>
-                          <span className="cell__go">Iniciar sesión</span>
+                          <span className="cell__go">Iniciar sesión <Icon name="arrow" /></span>
                         </button>
                       </>
                     )}
                   </div>
                 </section>
               )}
+
+              {/* PILARES */}
+              <section className="block">
+                <h2>Lo que nos distingue</h2>
+                <p className="block__sub">La base de la experiencia IINICIA, sin importar tu rol.</p>
+                <div className="pilares">
+                  {PILARES.map((p) => (
+                    <div className="pilar" key={p.title}>
+                      <span className="pilar__icon"><Icon name={p.icon} /></span>
+                      <h3>{p.title}</h3>
+                      <p>{p.text}</p>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              {/* POR QUÉ ELEGIRNOS */}
+              <section className="why">
+                <div className="why__text">
+                  <h2>¿Por qué IINICIA?</h2>
+                  <p>Diseñamos un portal que une tu aula, tus trámites y tu avance en un mismo lugar, con el respaldo y la seguridad que tu cuenta necesita.</p>
+                </div>
+                <div className="why__list">
+                  {WHY_US.map((w) => (
+                    <div className="why__item" key={w.title}>
+                      <h4>{w.title}</h4>
+                      <p>{w.text}</p>
+                    </div>
+                  ))}
+                </div>
+              </section>
 
               {/* PASOS (solo visitantes) */}
               {!session && !loading && (
@@ -420,8 +469,8 @@ function Shell() {
                   </div>
                 </section>
               )}
-                        </>
-          )}
+            </>
+            )}
         </div>
 
         <footer className="site-foot">
