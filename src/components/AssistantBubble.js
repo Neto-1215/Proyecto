@@ -82,6 +82,16 @@ export default function AssistantBubble({ onNavigate }) {
           </div>
 
           <div className="asistente__cuerpo">
+            <div className="asistente__burbuja asistente__burbuja--bot">
+              <p>¡Hola! Soy el asistente de IINICIA. Escribe tu duda o elige un tema:</p>
+              <div className="asistente__chips">
+                {visibles.map((t) => (
+                  <button key={t.id} className="asistente__chip" onClick={() => elegirChip(t)}>
+                    {t.titulo}
+                  </button>
+                ))}
+              </div>
+            </div>
             {mensajes.map((m, i) => (
               <div key={i} className={`asistente__burbuja asistente__burbuja--${m.rol}`}>
                 <p>{m.texto}</p>
