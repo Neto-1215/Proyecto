@@ -377,7 +377,6 @@ function Shell() {
                 </div>
               </section>
               
-              <InicioAssistant onNavigate={go} />
 
               {/* BENTO: solo lo que el rol puede usar */}
               {!loading && (
@@ -445,7 +444,7 @@ function Shell() {
         </footer>
       </div>
 
-      {!suspended && view !== null && <AssistantBubble onNavigate={go} />}
+            {!suspended && (view === null ? <InicioAssistant onNavigate={go} /> : <AssistantBubble onNavigate={go} />)}
     </div>
   );
 }
