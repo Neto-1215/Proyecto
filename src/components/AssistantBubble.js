@@ -6,15 +6,10 @@ import './AssistantBubble.css';
 
 const API = process.env.REACT_APP_API_URL || 'http://localhost:4000';
 
-const BIENVENIDA = {
-  rol: 'bot',
-  texto: '¡Hola! Soy el asistente de IINICIA. Escribe tu duda o elige un tema:',
-};
-
 export default function AssistantBubble({ onNavigate }) {
   const { session, rol, can } = useAuth();
   const [abierto, setAbierto] = useState(false);
-  const [mensajes, setMensajes] = useState([BIENVENIDA]);
+  const [mensajes, setMensajes] = useState([]);
   const [texto, setTexto] = useState('');
   const [cursos, setCursos] = useState([]);
   const finRef = useRef(null);
