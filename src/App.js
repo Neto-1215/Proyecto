@@ -152,9 +152,224 @@ function Shell() {
   const cellsVisible = CELLS.filter((c) => can(c.tab));
   const pendiente = session && !suspended && (rol === 'aspirante' || estado === 'Pendiente');
 
+  /* ============ INICIO: navbar flotante, sin sidebar ============ */
+  if (view === null) {
+    return (
+      <div className="landing">
+        <header className="navbar">
+          <img src="/Logo.png" alt="IINICIA" className="navbar__logo" onClick={() => go(null)} />
+          <nav className="navbar__links">
+            {!loading && (
+              session ? (
+                <>
+                  <button className="navbar__link" onClick={() => go('dashboard')} disabled={!can('dashboard')}>
+                    Mi IINICIA
+                  </button>
+                  <div className="usermenu" ref={menuRef}>
+                    <button
+                      className="topbar__user"
+                      aria-haspopup="menu"
+                      aria-expanded={menuOpen}
+                      title={user?.email}
+                      onClick={() => setMenuOpen(!menuOpen)}
+                    >
+                      <span className="topbar__avatar">{userInitial}</span>
+                      <span className="topbar__name">{displayName}</span>
+                      <Icon name="chevron" />
+                    </button>
+                    {menuOpen && (
+                      <div className="usermenu__panel" role="menu">
+                        <div className="usermenu__head">
+                          <strong>{displayName}</strong>
+                          <small>{rolLabel}</small>
+                        </div>
+                        {can('profile') && (
+                          <button role="menuitem" onClick={() => { setMenuOpen(false); go('profile'); }}>
+                            <Icon name="shield" /> Mi perfil
+                          </button>
+                        )}
+                        <button role="menuitem" onClick={handleLogout}>
+                          <Icon name="logout" /> Cerrar sesión
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <button className="btn btn--light btn--sm" onClick={() => goAuth('register')}>
+                    Registrarme
+                  </button>
+                  <button className="btn btn--primary btn--sm" onClick={() => goAuth('login')}>
+                    Iniciar sesión
+                  </button>
+                </>
+              )
+            )}
+          </nav>
+        </header>
+
+        <div className="landing__content">
+          {suspended && (
+            <div className="alert alert--error banner">
+              Tu cuenta está suspendida. Contacta a soporte para reactivarla.
+            </div>
+          )}
+          {pendiente && (
+            <div className="alert alert--info banner">
+              Tu cuenta está pendiente de autorización. No tendrás acceso a cursos hasta que un administrador te autorice.
+            </div>
+          )}
+
+          <section className="hero">
+            <div className="hero__text">
+              <span className="chip">Universidad IINICIA</span>
+              <h1>
+                Tu educación comienza hoy, <span>estés donde estés.</span>
+              </h1>
+              <p>El conocimiento que transforma tu vida está a tu alcance, en todo momento.</p>
+              <div className="hero__actions">
+                {session ? (
+                  <>
+                    <button className="btn btn--primary" onClick={() => go('dashboard')} disabled={!can('dashboard')}>
+                      Ir a Mi IINICIA
+                    </button>
+                    {can('courses') && (
+                      <button className="btn btn--light" onClick={() => go('courses')}>
+                        Mis cursos
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <button className="btn btn--primary" onClick={() => goAuth('register')}>
+                      Crear mi cuenta
+                    </button>
+                    <button className="btn btn--light" onClick={() => goAuth('login')}>
+                      Iniciar sesión
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="visual" aria-hidden="true">
+              <div className="blob" />
+              <div className="float-card fc-a">
+                <small>Tu progreso</small>
+                <strong>Curso de ejemplo</strong>
+                <div className="bar"><b style={{ width: '72%' }} /></div>
+                <em>72% completado</em>
+              </div>
+              <div className="float-card fc-b">
+                <span className="badge-ok"><Icon name="check" /></span>
+                <div>
+                  <strong>Constancia lista</strong>
+                  <small>Descárgala en Trámites</small>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {!loading && (
+            <section className="block">
+              <h2>{session ? `Lo que puedes hacer como ${rolLabel.toLowerCase()}` : 'Empieza hoy en IINICIA'}</h2>
+              <p className="block__sub">
+                {session ? 'Entra directo a lo que necesitas desde tu portal.' : 'Todo lo que necesitas para empezar tu proceso de admisión.'}
+              </p>
+
+              <div className="bento">
+                {session ? (
+                  cellsVisible.map((c, i) => (
+                    <button
+                      key={c.tab}
+                      className={`cell c-third ${VARIANTS[i % 3]}`}
+                      onClick={() => go(c.tab)}
+                    >
+                      <span className="cell__icon"><Icon name={c.icon} /></span>
+                      <h3>{c.title}</h3>
+                      <p>{c.text}</p>
+                      <span className="cell__go">{c.cta} <Icon name="arrow" /></span>
+                    </button>
+                  ))
+                ) : (
+                  <>
+                    <button className="cell cell--dark c-wide" onClick={() => goAuth('register')}>
+                      <span className="cell__icon"><Icon name="user" /></span>
+                      <h3>Crea tu cuenta</h3>
+                      <p>Regístrate con tu correo y comienza tu proceso de admisión.</p>
+                      <span className="cell__go">Registrarme <Icon name="arrow" /></span>
+                    </button>
+                    <button className="cell c-wide" onClick={() => goAuth('login')}>
+                      <span className="cell__icon"><Icon name="login" /></span>
+                      <h3>Ya tengo cuenta</h3>
+                      <p>Accede a tu panel, tus cursos y tus trámites.</p>
+                      <span className="cell__go">Iniciar sesión <Icon name="arrow" /></span>
+                    </button>
+                  </>
+                )}
+              </div>
+            </section>
+          )}
+
+          <section className="block">
+            <h2>Lo que nos distingue</h2>
+            <p className="block__sub">La base de la experiencia IINICIA, sin importar tu rol.</p>
+            <div className="pilares">
+              {PILARES.map((p) => (
+                <div className="pilar" key={p.title}>
+                  <span className="pilar__icon"><Icon name={p.icon} /></span>
+                  <h3>{p.title}</h3>
+                  <p>{p.text}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="why">
+            <div className="why__text">
+              <h2>¿Por qué IINICIA?</h2>
+              <p>Diseñamos un portal que une tu aula, tus trámites y tu avance en un mismo lugar, con el respaldo y la seguridad que tu cuenta necesita.</p>
+            </div>
+            <div className="why__list">
+              {WHY_US.map((w) => (
+                <div className="why__item" key={w.title}>
+                  <h4>{w.title}</h4>
+                  <p>{w.text}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {!session && !loading && (
+            <section className="block block--steps">
+              <h2>Empieza en 3 pasos</h2>
+              <div className="steps">
+                {STEPS.map((s) => (
+                  <div className="step" key={s.n}>
+                    <span className="step__n">{s.n}</span>
+                    <h3>{s.title}</h3>
+                    <p>{s.text}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+        </div>
+
+        <footer className="site-foot">
+          <span>UNIVERSIDAD IINICIA &copy; 2026</span>
+          <span>Instituto de Innovación y Ciencias Aplicadas &bull; Entorno de Pruebas</span>
+        </footer>
+
+        {!suspended && <InicioAssistant onNavigate={go} />}
+      </div>
+    );
+  }
+
+  /* ============ PORTAL INTERNO: sidebar + topbar ============ */
   return (
     <div className="shell">
-      {/* ============ SIDEBAR ============ */}
       <aside className={`sidebar ${sideOpen ? 'open' : ''}`}>
         <img src="/Logo.png" alt="IINICIA" className="sidebar__logo" onClick={() => go(null)} />
 
@@ -186,7 +401,6 @@ function Shell() {
                     <strong title={user?.email}>{displayName}</strong>
                   </div>
                 </div>
-                
               </>
             ) : null
           )}
@@ -195,7 +409,6 @@ function Shell() {
       </aside>
       {sideOpen && <div className="scrim" onClick={() => setSideOpen(false)} />}
 
-      {/* ============ MAIN ============ */}
       <div className="main">
         <header className="topbar">
           <button className="topbar__menu" aria-label="Abrir menú" onClick={() => setSideOpen(!sideOpen)}>
@@ -298,8 +511,7 @@ function Shell() {
             <section className="page">
               <div className="page-card"><div className="empty">Cargando…</div></div>
             </section>
-          ) : view ? (
-            /* ---------- PÁGINAS INTERNAS ---------- */
+          ) : (
             <section className={`page ${WIDE_PAGES.includes(view) ? 'page--wide' : ''}`}>
               {view === 'dashboard' ? (
                 <Dashboard onNavigate={go} />
@@ -328,149 +540,7 @@ function Shell() {
                 </>
               )}
             </section>
-          ) : (
-            /* ---------- INICIO ---------- */
-            <>
-              <section className="hero">
-                <div className="hero__text">
-                  <span className="chip">Universidad IINICIA</span>
-                  <h1>
-                    Tu educación comienza hoy, <span>estés donde estés.</span>
-                  </h1>
-                  <p>El conocimiento que transforma tu vida está a tu alcance, en todo momento.</p>
-                  <div className="hero__actions">
-                    {session ? (
-                      <>
-                        <button className="btn btn--primary" onClick={() => go('dashboard')} disabled={!can('dashboard')}>
-                          Ir a Mi IINICIA
-                        </button>
-                        {can('courses') && (
-                          <button className="btn btn--light" onClick={() => go('courses')}>
-                            Mis cursos
-                          </button>
-                        )}
-                      </>
-                    ) : (
-                      <>
-                        <button className="btn btn--primary" onClick={() => goAuth('register')}>
-                          Crear mi cuenta
-                        </button>
-                        <button className="btn btn--light" onClick={() => goAuth('login')}>
-                          Iniciar sesión
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                <div className="visual" aria-hidden="true">
-                  <div className="blob" />
-                  <div className="float-card fc-a">
-                    <small>Tu progreso</small>
-                    <strong>Curso de ejemplo</strong>
-                    <div className="bar"><b style={{ width: '72%' }} /></div>
-                    <em>72% completado</em>
-                  </div>
-                  <div className="float-card fc-b">
-                    <span className="badge-ok"><Icon name="check" /></span>
-                    <div>
-                      <strong>Constancia lista</strong>
-                      <small>Descárgala en Trámites</small>
-                    </div>
-                  </div>
-                </div>
-              </section>
-
-              {/* BENTO: solo lo que el rol puede usar */}
-              {!loading && (
-                <section className="block">
-                  <h2>{session ? `Lo que puedes hacer como ${rolLabel.toLowerCase()}` : 'Empieza hoy en IINICIA'}</h2>
-                  <p className="block__sub">
-                    {session ? 'Entra directo a lo que necesitas desde tu portal.' : 'Todo lo que necesitas para empezar tu proceso de admisión.'}
-                  </p>
-
-                  <div className="bento">
-                    {session ? (
-                      cellsVisible.map((c, i) => (
-                        <button
-                          key={c.tab}
-                          className={`cell c-third ${VARIANTS[i % 3]}`}
-                          onClick={() => go(c.tab)}
-                        >
-                          <span className="cell__icon"><Icon name={c.icon} /></span>
-                          <h3>{c.title}</h3>
-                          <p>{c.text}</p>
-                          <span className="cell__go">{c.cta} <Icon name="arrow" /></span>
-                        </button>
-                      ))
-                    ) : (
-                      <>
-                        <button className="cell cell--dark c-wide" onClick={() => goAuth('register')}>
-                          <span className="cell__icon"><Icon name="user" /></span>
-                          <h3>Crea tu cuenta</h3>
-                          <p>Regístrate con tu correo y comienza tu proceso de admisión.</p>
-                          <span className="cell__go">Registrarme <Icon name="arrow" /></span>
-                        </button>
-                        <button className="cell c-wide" onClick={() => goAuth('login')}>
-                          <span className="cell__icon"><Icon name="login" /></span>
-                          <h3>Ya tengo cuenta</h3>
-                          <p>Accede a tu panel, tus cursos y tus trámites.</p>
-                          <span className="cell__go">Iniciar sesión <Icon name="arrow" /></span>
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </section>
-              )}
-
-              {/* PILARES */}
-              <section className="block">
-                <h2>Lo que nos distingue</h2>
-                <p className="block__sub">La base de la experiencia IINICIA, sin importar tu rol.</p>
-                <div className="pilares">
-                  {PILARES.map((p) => (
-                    <div className="pilar" key={p.title}>
-                      <span className="pilar__icon"><Icon name={p.icon} /></span>
-                      <h3>{p.title}</h3>
-                      <p>{p.text}</p>
-                    </div>
-                  ))}
-                </div>
-              </section>
-
-              {/* POR QUÉ ELEGIRNOS */}
-              <section className="why">
-                <div className="why__text">
-                  <h2>¿Por qué IINICIA?</h2>
-                  <p>Diseñamos un portal que une tu aula, tus trámites y tu avance en un mismo lugar, con el respaldo y la seguridad que tu cuenta necesita.</p>
-                </div>
-                <div className="why__list">
-                  {WHY_US.map((w) => (
-                    <div className="why__item" key={w.title}>
-                      <h4>{w.title}</h4>
-                      <p>{w.text}</p>
-                    </div>
-                  ))}
-                </div>
-              </section>
-
-              {/* PASOS (solo visitantes) */}
-              {!session && !loading && (
-                <section className="block block--steps">
-                  <h2>Empieza en 3 pasos</h2>
-                  <div className="steps">
-                    {STEPS.map((s) => (
-                      <div className="step" key={s.n}>
-                        <span className="step__n">{s.n}</span>
-                        <h3>{s.title}</h3>
-                        <p>{s.text}</p>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              )}
-            </>
-            )}
+          )}
         </div>
 
         <footer className="site-foot">
@@ -479,7 +549,7 @@ function Shell() {
         </footer>
       </div>
 
-            {!suspended && (view === null ? <InicioAssistant onNavigate={go} /> : <AssistantBubble onNavigate={go} />)}
+      {!suspended && <AssistantBubble onNavigate={go} />}
     </div>
   );
 }
