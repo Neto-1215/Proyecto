@@ -769,3 +769,6 @@ h1, h2, h3 { font-family: 'Poppins', sans-serif; font-weight: 800; }
   .navbar__links { flex-wrap: wrap; justify-content: center; }
   .landing__content { padding: 190px 20px 0; }
 }
+
+/* Deja espacio para que el navbar flotante no tape la sección al hacer scroll */
+#inicio, #opciones, #pilares, #por-que, #pasos { scroll-margin-top: 110px; }

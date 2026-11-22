@@ -130,6 +130,10 @@ function Shell() {
     go('auth');
   };
 
+  const scrollTo = (id) => {
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
   const handleLogout = async () => {
     setMenuOpen(false);
     await supabase.auth.signOut();
@@ -158,7 +162,12 @@ function Shell() {
       <div className="landing">
         <header className="navbar">
           <img src="/Logo.png" alt="IINICIA" className="navbar__logo" onClick={() => go(null)} />
-          <nav className="navbar__links">
+                    <nav className="navbar__links">
+            <button className="navbar__link" onClick={() => scrollTo('inicio')}>Inicio</button>
+            <button className="navbar__link" onClick={() => scrollTo('opciones')}>Opciones</button>
+            <button className="navbar__link" onClick={() => scrollTo('pilares')}>Pilares</button>
+            <button className="navbar__link" onClick={() => scrollTo('por-que')}>Por qué IINICIA</button>
+            {!session && <button className="navbar__link" onClick={() => scrollTo('pasos')}>Cómo empezar</button>}
             {!loading && (
               session ? (
                 <>
@@ -221,7 +230,7 @@ function Shell() {
             </div>
           )}
 
-          <section className="hero">
+          <section className="hero" id="inicio">
             <div className="hero__text">
               <span className="chip">Universidad IINICIA</span>
               <h1>
@@ -272,7 +281,7 @@ function Shell() {
           </section>
 
           {!loading && (
-            <section className="block">
+            <section className="block" id="opciones">
               <h2>{session ? `Lo que puedes hacer como ${rolLabel.toLowerCase()}` : 'Empieza hoy en IINICIA'}</h2>
               <p className="block__sub">
                 {session ? 'Entra directo a lo que necesitas desde tu portal.' : 'Todo lo que necesitas para empezar tu proceso de admisión.'}
@@ -312,7 +321,7 @@ function Shell() {
             </section>
           )}
 
-          <section className="block">
+          <section className="block" id="pilares">
             <h2>Lo que nos distingue</h2>
             <p className="block__sub">La base de la experiencia IINICIA, sin importar tu rol.</p>
             <div className="pilares">
@@ -326,7 +335,7 @@ function Shell() {
             </div>
           </section>
 
-          <section className="why">
+          <section className="why" id="por-que">
             <div className="why__text">
               <h2>¿Por qué IINICIA?</h2>
               <p>Diseñamos un portal que une tu aula, tus trámites y tu avance en un mismo lugar, con el respaldo y la seguridad que tu cuenta necesita.</p>
@@ -342,7 +351,7 @@ function Shell() {
           </section>
 
           {!session && !loading && (
-            <section className="block block--steps">
+            <section className="block block--steps" id="pasos">
               <h2>Empieza en 3 pasos</h2>
               <div className="steps">
                 {STEPS.map((s) => (
