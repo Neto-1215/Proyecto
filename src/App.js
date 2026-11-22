@@ -321,16 +321,13 @@ function Shell() {
             <>
               <section className="hero">
                 <div className="hero__text">
-                  <span className="chip"><i /> Universidad IINICIA</span>
-                  <h1>
-                    Tu educación comienza hoy, <span>estés donde estés.</span>
-                  </h1>
+                  <h1>Formación aplicada que te acompaña donde estés.</h1>
                   <p>El conocimiento que transforma tu vida está a tu alcance, en todo momento.</p>
                   <div className="hero__actions">
                     {session ? (
                       <>
                         <button className="btn btn--primary" onClick={() => go('dashboard')} disabled={!can('dashboard')}>
-                          Ir a Mi IINICIA <Icon name="arrow" />
+                          Ir a Mi IINICIA
                         </button>
                         {can('courses') && (
                           <button className="btn btn--light" onClick={() => go('courses')}>
@@ -341,7 +338,7 @@ function Shell() {
                     ) : (
                       <>
                         <button className="btn btn--primary" onClick={() => goAuth('register')}>
-                          Crear mi cuenta <Icon name="arrow" />
+                          Crear mi cuenta
                         </button>
                         <button className="btn btn--light" onClick={() => goAuth('login')}>
                           Iniciar sesión
@@ -351,38 +348,28 @@ function Shell() {
                   </div>
                 </div>
 
-                {/* Tarjetas decorativas (ejemplo visual) */}
+                {/* Diagrama: los pilares del instituto conectados a un núcleo */}
                 <div className="visual" aria-hidden="true">
-                  <div className="blob" />
-                  <div className="float-card fc-a">
-                    <small>Mi progreso</small>
-                    <strong>Curso de ejemplo</strong>
-                    <div className="bar"><b style={{ width: '72%' }} /></div>
-                    <em>72% completado</em>
-                  </div>
-                  <div className="float-card fc-b">
-                    <span className="pulse" />
-                    <div>
-                      <strong>Nueva lección</strong>
-                      <small>Ya disponible en tu aula</small>
-                    </div>
-                  </div>
-                  <div className="float-card fc-c">
-                    <span className="badge-ok"><Icon name="check" /></span>
-                    <div>
-                      <strong>Constancia lista</strong>
-                      <small>Descárgala en Trámites</small>
-                    </div>
+                  <div className="diagram">
+                    <svg className="diagram__lines" viewBox="0 0 400 420" preserveAspectRatio="none">
+                      <line x1="200" y1="210" x2="90" y2="90" />
+                      <line x1="200" y1="210" x2="310" y2="110" />
+                      <line x1="200" y1="210" x2="80" y2="320" />
+                      <line x1="200" y1="210" x2="300" y2="330" />
+                    </svg>
+                    <span className="diagram__hub">IINICIA</span>
+                    <span className="diagram__node" style={{ top: '21%', left: '22%' }}>Docencia</span>
+                    <span className="diagram__node" style={{ top: '26%', left: '78%' }}>Investigación</span>
+                    <span className="diagram__node" style={{ top: '76%', left: '20%' }}>Comunidad</span>
+                    <span className="diagram__node diagram__node--accent" style={{ top: '79%', left: '75%' }}>Innovación</span>
                   </div>
                 </div>
               </section>
-              
 
               {/* BENTO: solo lo que el rol puede usar */}
               {!loading && (
                 <section className="block">
-                  <span className="eyebrow">{session ? rolLabel : 'Tu espacio'}</span>
-                  <h2>{session ? 'Lo que puedes hacer en tu portal' : 'Empieza hoy en IINICIA'}</h2>
+                  <h2>{session ? `Lo que puedes hacer como ${rolLabel.toLowerCase()}` : 'Empieza hoy en IINICIA'}</h2>
 
                   <div className="bento">
                     {session ? (
@@ -395,7 +382,7 @@ function Shell() {
                           <span className="cell__icon"><Icon name={c.icon} /></span>
                           <h3>{c.title}</h3>
                           <p>{c.text}</p>
-                          <span className="cell__go">{c.cta} <Icon name="arrow" /></span>
+                          <span className="cell__go">{c.cta}</span>
                         </button>
                       ))
                     ) : (
@@ -404,13 +391,13 @@ function Shell() {
                           <span className="cell__icon"><Icon name="user" /></span>
                           <h3>Crea tu cuenta</h3>
                           <p>Regístrate con tu correo y comienza tu proceso de admisión.</p>
-                          <span className="cell__go">Registrarme <Icon name="arrow" /></span>
+                          <span className="cell__go">Registrarme</span>
                         </button>
                         <button className="cell c-wide" onClick={() => goAuth('login')}>
                           <span className="cell__icon"><Icon name="login" /></span>
                           <h3>Ya tengo cuenta</h3>
                           <p>Accede a tu panel, tus cursos y tus trámites.</p>
-                          <span className="cell__go">Iniciar sesión <Icon name="arrow" /></span>
+                          <span className="cell__go">Iniciar sesión</span>
                         </button>
                       </>
                     )}
@@ -421,7 +408,6 @@ function Shell() {
               {/* PASOS (solo visitantes) */}
               {!session && !loading && (
                 <section className="block block--steps">
-                  <span className="eyebrow">Cómo empezar</span>
                   <h2>Empieza en 3 pasos</h2>
                   <div className="steps">
                     {STEPS.map((s) => (
@@ -434,7 +420,7 @@ function Shell() {
                   </div>
                 </section>
               )}
-            </>
+                        </>
           )}
         </div>
 
