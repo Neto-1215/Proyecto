@@ -160,9 +160,11 @@ function Shell() {
   if (view === null) {
     return (
       <div className="landing">
+        <div className="navbar-logo-wrap" onClick={() => go(null)}>
+          <img src="/Logo.png" alt="IINICIA" className="navbar-logo" />
+        </div>
         <header className="navbar">
-          <img src="/Logo.png" alt="IINICIA" className="navbar__logo" onClick={() => go(null)} />
-                    <nav className="navbar__links">
+          <nav className="navbar__links">
             <button className="navbar__link" onClick={() => scrollTo('inicio')}>Inicio</button>
             <button className="navbar__link" onClick={() => scrollTo('opciones')}>Opciones</button>
             <button className="navbar__link" onClick={() => scrollTo('pilares')}>Pilares</button>

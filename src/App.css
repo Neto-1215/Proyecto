@@ -747,31 +747,38 @@ h1, h2, h3 { font-family: 'Poppins', sans-serif; font-weight: 800; }
 }
 .landing__content { flex: 1; width: 100%; max-width: 1180px; margin: 0 auto; padding: 130px 40px 0; }
 
-.navbar {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 12px 30px;
-  background: linear-gradient(110deg, #2b3fd8 0%, #6d3be0 55%, #a63fd0 100%);
-  position: fixed; width: 90%; max-width: 1200px; top: 20px; left: 50%; transform: translateX(-50%);
-  z-index: 1000; border-radius: 50px; border: 1px solid rgba(255, 255, 255, 0.35);
-  box-shadow: 0 12px 32px rgba(109, 59, 224, 0.35);
+.navbar-logo-wrap {
+  position: fixed; top: 18px; left: 30px; z-index: 1001;
+  display: flex; align-items: center;
+  padding: 8px 16px;
+  background: var(--oscuro);
+  border-radius: 50px;
+  cursor: pointer;
+  box-shadow: 0 10px 30px rgba(11, 125, 240, 0.12);
 }
-.navbar__logo { height: 52px; margin: -6px 0; cursor: pointer; }
-.navbar__links { display: flex; gap: 18px; align-items: center; }
+.navbar-logo { height: 32px; display: block; }
+
+.navbar {
+  display: flex; justify-content: space-evenly; align-items: center;
+  padding: 12px 30px;
+  background: rgba(255, 255, 255, 0.92); backdrop-filter: blur(12px);
+  position: fixed; width: 90%; max-width: 1200px; top: 20px; left: 50%; transform: translateX(-50%);
+  z-index: 1000; border-radius: 50px; border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 10px 30px rgba(11, 125, 240, 0.08);
+}
+.navbar__links { display: flex; justify-content: space-evenly; align-items: center; flex: 1; gap: 10px; }
 .navbar__link {
   border: none; background: none; cursor: pointer;
-  font-size: 14px; font-weight: 600; color: #fff;
-  padding: 8px 4px;
+  font-size: 14px; font-weight: 600; color: var(--oscuro);
+  padding: 8px 4px; white-space: nowrap;
 }
-.navbar__link:hover { color: #dbeafe; }
-.navbar .btn--primary { background: #fff; color: #4c2fc7; box-shadow: none; }
-.navbar .btn--primary:hover { background: #ede9fe; box-shadow: none; }
-.navbar .btn--light { background: transparent; color: #fff; border-color: rgba(255, 255, 255, 0.7); }
-.navbar .btn--light:hover { background: rgba(255, 255, 255, 0.18); color: #fff; }
+.navbar__link:hover { color: var(--azul-fuerte); }
 
 @media (max-width: 760px) {
-  .navbar { flex-direction: column; gap: 12px; padding: 16px; border-radius: 24px; width: 94%; }
+  .navbar-logo-wrap { top: 14px; left: 50%; transform: translateX(-50%); }
+  .navbar { top: 74px; flex-direction: column; gap: 12px; padding: 16px; border-radius: 24px; width: 94%; }
   .navbar__links { flex-wrap: wrap; justify-content: center; }
-  .landing__content { padding: 190px 20px 0; }
+  .landing__content { padding: 230px 20px 0; }
 }
 
 /* Deja espacio para que el navbar flotante no tape la sección al hacer scroll */
