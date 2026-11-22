@@ -14,6 +14,7 @@ import AdminUsers from './components/AdminUsers';
 import CourseAccess from './components/CourseAccess';
 import AuditLog from './components/AuditLog';
 import AssistantBubble from './components/AssistantBubble';
+import InicioAssistant from './components/InicioAssistant';
 
 /* ---------- Datos ---------- */
 // Menú completo; cada rol solo ve lo que permissions.js le autoriza
@@ -375,6 +376,8 @@ function Shell() {
                   </div>
                 </div>
               </section>
+              
+              <InicioAssistant onNavigate={go} />
 
               {/* BENTO: solo lo que el rol puede usar */}
               {!loading && (
@@ -442,7 +445,7 @@ function Shell() {
         </footer>
       </div>
 
-      {!suspended && <AssistantBubble onNavigate={go} />}
+      {!suspended && view !== null && <AssistantBubble onNavigate={go} />}
     </div>
   );
 }
