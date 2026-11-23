@@ -835,3 +835,31 @@ h1, h2, h3 { font-family: 'Poppins', sans-serif; font-weight: 800; }
 /* Tablas chicas (2-3 columnas): sin ancho mínimo, se ajustan a la pantalla */
 .table--compact { min-width: 0; }
 .table--compact td.who strong { overflow-wrap: anywhere; }
+
+/* ================= HERO CON FOTO DE FONDO (como iinicia.org) ================= */
+/* Foto en public/hero.jpg. Si no existe, queda el azul marino sólido. */
+.landing { overflow-x: clip; }
+.hero { isolation: isolate; margin-bottom: 50px; }
+.hero::before {
+  content: '';
+  position: absolute; z-index: -1;
+  top: -130px; bottom: 0; left: 50%;
+  width: 100vw; transform: translateX(-50%);
+  background:
+    linear-gradient(100deg, rgba(15, 18, 30, 0.94) 0%, rgba(15, 18, 30, 0.78) 50%, rgba(15, 18, 30, 0.55) 100%),
+    var(--hero-foto, none) center / cover no-repeat,
+    var(--oscuro);
+  border-bottom-right-radius: 140px;
+}
+.hero h1 { color: #fff; }
+.hero h1 span { background: linear-gradient(135deg, #38bdf8, #0ea5e9); -webkit-background-clip: text; background-clip: text; }
+.hero__text p { color: rgba(255, 255, 255, 0.78); }
+.hero .chip { background: rgba(255, 255, 255, 0.12); color: #7dd3fc; }
+.hero .btn--light { color: #fff; border-color: rgba(255, 255, 255, 0.6); }
+.hero .btn--light:hover { background: #fff; color: var(--oscuro); border-color: #fff; }
+.hero-logo { filter: drop-shadow(0 20px 40px rgba(0, 0, 0, 0.35)); }
+.blob { opacity: .5; }
+
+@media (max-width: 760px) {
+  .hero::before { top: -230px; border-bottom-right-radius: 60px; }
+}

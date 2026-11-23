@@ -249,7 +249,7 @@ function Shell() {
             </div>
           )}
 
-          <section className="hero" id="inicio">
+          <section className="hero" id="inicio" style={{ '--hero-foto': `url(${process.env.PUBLIC_URL}/hero.jpg)` }}>
             <div className="hero__text">
               <span className="chip">Universidad IINICIA</span>
               <h1>
