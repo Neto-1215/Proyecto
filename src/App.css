@@ -810,3 +810,15 @@ h1, h2, h3 { font-family: 'Poppins', sans-serif; font-weight: 800; }
 .course-card--img p strong { color: #fff; }
 .course-card--img .btn { margin-top: 6px; }
 .course-card--img .btn--light { color: #fff; border-color: rgba(255, 255, 255, 0.5); }
+
+/* ================= AJUSTES MÓVIL: que nada se salga de la pantalla ================= */
+.main, .content, .page, .page-card, .dash, .dash > *, .panel { min-width: 0; }
+.dash { grid-template-columns: minmax(0, 1fr); }
+
+@media (max-width: 760px) {
+  .panel .table { min-width: 0; }
+  .panel .table th, .panel .table td { padding: 12px 10px; }
+  .hero-banner { min-height: 0; padding: 26px 22px; }
+  .hero-banner__art { display: none; }
+  .stat strong { font-size: 1.6rem; }
+}
