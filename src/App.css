@@ -748,12 +748,13 @@ h1, h2, h3 { font-family: 'Poppins', sans-serif; font-weight: 800; }
 }
 .landing__content { flex: 1; width: 100%; max-width: 1180px; margin: 0 auto; padding: 130px 40px 0; }
 
-.navbar-logo-wrap {
-  position: fixed; top: 16px; left: 30px; z-index: 1001;
-  display: flex; align-items: center;
-  cursor: pointer;
+/* Logo dentro de la barra. El PNG es blanco (para fondo oscuro):
+   invert + hue-rotate lo pasa a texto oscuro conservando el azul. */
+.navbar-logo {
+  height: 54px; width: auto; display: block; flex-shrink: 0;
+  margin-right: 12px; cursor: pointer;
+  filter: invert(1) hue-rotate(180deg);
 }
-.navbar-logo { height: 46px; width: auto; display: block; }
 
 .navbar {
   display: flex; justify-content: space-evenly; align-items: center;
@@ -772,9 +773,8 @@ h1, h2, h3 { font-family: 'Poppins', sans-serif; font-weight: 800; }
 .navbar__link:hover { color: var(--azul-fuerte); }
 
 @media (max-width: 760px) {
-      .navbar-logo-wrap { top: 10px; left: 50%; transform: translateX(-50%); }
-  .navbar-logo { height: 40px; }
-  .navbar { top: 74px; flex-direction: column; gap: 12px; padding: 16px; border-radius: 24px; width: 94%; }
+  .navbar-logo { height: 44px; margin-right: 0; }
+  .navbar { top: 12px; flex-direction: column; gap: 12px; padding: 16px; border-radius: 24px; width: 94%; }
   .navbar__links { flex-wrap: wrap; justify-content: center; }
   .landing__content { padding: 230px 20px 0; }
 }
@@ -782,14 +782,11 @@ h1, h2, h3 { font-family: 'Poppins', sans-serif; font-weight: 800; }
 /* Deja espacio para que el navbar flotante no tape la sección al hacer scroll */
 #inicio, #opciones, #pilares, #por-que, #pasos { scroll-margin-top: 110px; }
 
-.hero-logo-bg {
-  position: absolute;
-  top: 50%; left: 50%;
-  transform: translate(-50%, -50%);
-  width: 640px;
-  max-width: 70vw;
-  opacity: 0.07;
+/* Logo grande al centro del hero, sobre el resplandor azul y debajo de las tarjetas */
+.hero-logo {
+  position: relative; z-index: 1;
+  width: 340px; max-width: 80%; height: auto;
   pointer-events: none;
-  z-index: -1;
-  filter: grayscale(1);
+  filter: invert(1) hue-rotate(180deg) drop-shadow(0 20px 40px rgba(11, 125, 240, 0.18));
 }
+.visual .float-card { z-index: 2; }
