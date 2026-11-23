@@ -766,11 +766,18 @@ h1, h2, h3 { font-family: 'Poppins', sans-serif; font-weight: 800; }
 }
 .navbar__links { display: flex; justify-content: space-evenly; align-items: center; flex: 1; gap: 10px; }
 .navbar__link {
-  border: none; background: none; cursor: pointer;
+  border: none; background: transparent; cursor: pointer;
   font-size: 14px; font-weight: 600; color: var(--oscuro);
-  padding: 8px 4px; white-space: nowrap;
+  padding: 9px 16px; border-radius: 999px; white-space: nowrap;
+  transition: color .2s, background-color .2s, box-shadow .2s, transform .12s;
 }
-.navbar__link:hover { color: var(--azul-fuerte); }
+.navbar__link:hover { color: var(--azul-fuerte); background: var(--azul-suave); }
+.navbar__link:active { transform: scale(.93); }
+.navbar__link.is-active {
+  color: #fff; background: var(--grad);
+  box-shadow: 0 6px 16px rgba(11, 125, 240, 0.3);
+}
+.navbar .btn:active { transform: scale(.95); }
 
 @media (max-width: 760px) {
   .navbar-logo { height: 44px; margin-right: 0; }

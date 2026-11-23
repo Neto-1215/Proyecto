@@ -85,6 +85,7 @@ function Shell() {
   const [activeTab, setActiveTab] = useState(null);
   const [sideOpen, setSideOpen] = useState(false);
   const [authMode, setAuthMode] = useState('login'); // 'login' | 'register'
+  const [seccion, setSeccion] = useState('inicio');
   const [menuOpen, setMenuOpen] = useState(false);
   const [avisos, setAvisos] = useState(0);
   const menuRef = useRef(null);
@@ -131,6 +132,7 @@ function Shell() {
   };
 
   const scrollTo = (id) => {
+    setSeccion(id);
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
@@ -156,18 +158,35 @@ function Shell() {
   const cellsVisible = CELLS.filter((c) => can(c.tab));
   const pendiente = session && !suspended && (rol === 'aspirante' || estado === 'Pendiente');
 
+  // Marca en la barra la sección que se está viendo
+  useEffect(() => {
+    if (view !== null) return;
+    const els = ['inicio', 'opciones', 'pilares', 'por-que', 'pasos']
+      .map((id) => document.getElementById(id))
+      .filter(Boolean);
+    if (!els.length) return;
+    const obs = new IntersectionObserver(
+      (entries) => entries.forEach((e) => { if (e.isIntersecting) setSeccion(e.target.id); }),
+      { rootMargin: '-45% 0px -50% 0px' }
+    );
+    els.forEach((el) => obs.observe(el));
+    return () => obs.disconnect();
+  }, [view, session, loading]);
+
+  const linkCls = (id) => `navbar__link ${seccion === id ? 'is-active' : ''}`;
+
   /* ============ INICIO: navbar flotante, sin sidebar ============ */
   if (view === null) {
     return (
       <div className="landing">
-          <header className="navbar">
+        <header className="navbar">
           <img src="/Logo.png" alt="IINICIA" className="navbar-logo" onClick={() => go(null)} />
           <nav className="navbar__links">
-            <button className="navbar__link" onClick={() => scrollTo('inicio')}>Inicio</button>
-            <button className="navbar__link" onClick={() => scrollTo('opciones')}>Opciones</button>
-            <button className="navbar__link" onClick={() => scrollTo('pilares')}>Pilares</button>
-            <button className="navbar__link" onClick={() => scrollTo('por-que')}>Por qué IINICIA</button>
-            {!session && <button className="navbar__link" onClick={() => scrollTo('pasos')}>Cómo empezar</button>}
+            <button className={linkCls('inicio')} onClick={() => scrollTo('inicio')}>Inicio</button>
+            <button className={linkCls('opciones')} onClick={() => scrollTo('opciones')}>Opciones</button>
+            <button className={linkCls('pilares')} onClick={() => scrollTo('pilares')}>Pilares</button>
+            <button className={linkCls('por-que')} onClick={() => scrollTo('por-que')}>Por qué IINICIA</button>
+            {!session && <button className={linkCls('pasos')} onClick={() => scrollTo('pasos')}>Cómo empezar</button>}
             {!loading && (
               session ? (
                 <>
