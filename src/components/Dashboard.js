@@ -8,7 +8,7 @@ import Icon from './Icon';
 
 const MOODLE_URL = process.env.REACT_APP_MOODLE_URL;
 // Foto opcional del campus: colócala en public/campus.jpg. Si no existe, se muestra la ilustración.
-const FOTO_CAMPUS = `${process.env.PUBLIC_URL || ''}/fondo.jpg`;
+const FOTO_CAMPUS = `${process.env.PUBLIC_URL || ''}/campus.jpg`;
 
 const claseEstado = (e) =>
   e === 'Activo' ? 'status--ok' : e === 'Suspendido' ? 'status--bad' : 'status--warn';
