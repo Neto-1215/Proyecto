@@ -107,7 +107,7 @@ export default function Dashboard({ onNavigate }) {
     }
   };
 
-   const load = useCallback(async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     setErr('');
     try {
@@ -294,7 +294,7 @@ export default function Dashboard({ onNavigate }) {
                 </div>
               ) : rol === 'estudiante' ? (
                 <div className="table-wrap">
-                  <table className="table">
+                  <table className="table table--compact">
                     <thead>
                       <tr>
                         <th>Curso</th>

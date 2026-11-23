@@ -822,3 +822,7 @@ h1, h2, h3 { font-family: 'Poppins', sans-serif; font-weight: 800; }
   .hero-banner__art { display: none; }
   .stat strong { font-size: 1.6rem; }
 }
+
+/* Tablas chicas (2-3 columnas): sin ancho mínimo, se ajustan a la pantalla */
+.table--compact { min-width: 0; }
+.table--compact td.who strong { overflow-wrap: anywhere; }
