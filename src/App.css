@@ -771,7 +771,9 @@ h1, h2, h3 { font-family: 'Poppins', sans-serif; font-weight: 800; }
   padding: 9px 16px; border-radius: 999px; white-space: nowrap;
   transition: color .2s, background-color .2s, box-shadow .2s, transform .12s;
 }
-.navbar__link:hover { color: var(--azul-fuerte); background: var(--azul-suave); }
+@media (hover: hover) {
+  .navbar__link:hover { color: var(--azul-fuerte); background: var(--azul-suave); }
+}
 .navbar__link:active { transform: scale(.93); }
 .navbar__link.is-active {
   color: #fff; background: var(--grad);
