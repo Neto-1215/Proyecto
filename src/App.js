@@ -233,6 +233,7 @@ function Shell() {
           )}
 
           <section className="hero" id="inicio">
+            <img src="/Logo.png" alt="" className="hero-logo-bg" />
             <div className="hero__text">
               <span className="chip">Universidad IINICIA</span>
               <h1>
