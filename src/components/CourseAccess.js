@@ -7,6 +7,19 @@ import { canManageEnrollments } from '../lib/permissions';
 
 const MOODLE_URL = process.env.REACT_APP_MOODLE_URL;
 
+// Imagen de fondo según el nombre del curso (sin importar acentos ni mayúsculas).
+// Para un curso nuevo: agrega una línea con sus palabras clave y su imagen en public/cursos/.
+const IMAGENES_CURSO = [
+  { claves: ['react', 'desarrollo web', 'javascript'], img: '/cursos/react.jpg' },
+  { claves: ['tecnologias de la informacion', 'redes', 'computacion'], img: '/cursos/ti.jpg' },
+];
+const limpiar = (t = '') => t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+const imagenCurso = (nombre) => {
+  const n = limpiar(nombre);
+  const hit = IMAGENES_CURSO.find((x) => x.claves.some((k) => n.includes(k)));
+  return hit ? hit.img : '/cursos/default.jpg';
+};
+
 const badgeMoodle = (e) =>
   e === 'Sincronizada' ? 'badge--ok' : e === 'Error' ? 'badge--bad' : 'badge--warn';
 
@@ -37,8 +50,8 @@ export default function CourseAccess() {
       .from('matriculas')
       .select(
         'id,rol_moodle,estado,moodle_estado,moodle_error,created_at,' +
-          'curso:cursos(id,nombre,programa,moodle_course_id),' +
-          'usuario:profiles(id,nombre,apellidos,email,rol)'
+        'curso:cursos(id,nombre,programa,moodle_course_id),' +
+        'usuario:profiles(id,nombre,apellidos,email,rol)'
       )
       .order('created_at', { ascending: false });
     if (m.error) setErr(m.error.message);
@@ -147,7 +160,7 @@ export default function CourseAccess() {
     setBusyId(null);
   };
 
-    const [credenciales, setCredenciales] = useState(null);
+  const [credenciales, setCredenciales] = useState(null);
 
   const entrar = async (id) => {
     setBusyId(id);
@@ -255,8 +268,8 @@ export default function CourseAccess() {
                     {m.rol_moodle === 'teacher'
                       ? '—'
                       : grades[m.id] === undefined || grades[m.id] === 'cargando'
-                      ? 'Cargando…'
-                      : grades[m.id]}
+                        ? 'Cargando…'
+                        : grades[m.id]}
                   </td>
                   {gestiona && (
                     <td style={{ whiteSpace: 'nowrap' }}>
@@ -287,7 +300,11 @@ export default function CourseAccess() {
       ) : (
         <div className="course-grid">
           {mats.map((m) => (
-            <article className="course-card" key={m.id}>
+            <article
+              className="course-card course-card--img"
+              key={m.id}
+              style={{ '--img': `url(${imagenCurso(m.curso?.nombre)})` }}
+            >
               <span className="badge">{m.rol_moodle === 'teacher' ? 'Profesor del curso' : 'Estudiante'}</span>
               <h3>{m.curso?.nombre}</h3>
               <p>{m.curso?.programa || 'Sin programa'}</p>

@@ -790,3 +790,23 @@ h1, h2, h3 { font-family: 'Poppins', sans-serif; font-weight: 800; }
   filter: invert(1) hue-rotate(180deg) drop-shadow(0 20px 40px rgba(11, 125, 240, 0.18));
 }
 .visual .float-card { z-index: 2; }
+
+/* ================= TARJETAS DE CURSO CON IMAGEN ================= */
+.course-card--img {
+  position: relative; overflow: hidden; isolation: isolate;
+  min-height: 300px; justify-content: flex-end;
+  background: var(--oscuro) var(--img) center / cover no-repeat;
+  color: #fff;
+  transition: transform .3s, box-shadow .3s;
+}
+.course-card--img::before {
+  content: ''; position: absolute; inset: 0; z-index: -1;
+  background: linear-gradient(180deg, rgba(15, 18, 30, 0.1) 0%, rgba(15, 18, 30, 0.55) 45%, rgba(15, 18, 30, 0.92) 100%);
+}
+.course-card--img:hover { transform: translateY(-6px); box-shadow: 0 20px 40px rgba(11, 125, 240, 0.2); }
+.course-card--img .badge { margin-bottom: auto; background: rgba(255, 255, 255, 0.18); color: #fff; backdrop-filter: blur(6px); }
+.course-card--img h3 { color: #fff; }
+.course-card--img p { color: rgba(255, 255, 255, 0.82); }
+.course-card--img p strong { color: #fff; }
+.course-card--img .btn { margin-top: 6px; }
+.course-card--img .btn--light { color: #fff; border-color: rgba(255, 255, 255, 0.5); }
