@@ -7,16 +7,19 @@ import { obtenerAccesoCampus, irACampus } from '../lib/campus';
 import Icon from './Icon';
 
 const MOODLE_URL = process.env.REACT_APP_MOODLE_URL;
-// Foto opcional del campus: colócala en public/campus.jpg. Si no existe, se muestra la ilustración.
+// Foto opcional del banner: colócala en public/campus.jpg. Si no existe, se muestra la ilustración.
 const FOTO_CAMPUS = `${process.env.PUBLIC_URL || ''}/campus.jpg`;
-
-const claseEstado = (e) =>
-  e === 'Activo' ? 'status--ok' : e === 'Suspendido' ? 'status--bad' : 'status--warn';
 
 const fecha = (iso) => (iso ? new Date(iso).toLocaleDateString('es-MX') : '—');
 
-/* ---------- Banner "Mi IINICIA" ---------- */
-function HeroBanner() {
+// "Curso 2. Desarrollo Web con React" -> ["Curso 2", "Desarrollo Web con React"]
+const partirNombre = (nombre = '') => {
+  const m = nombre.match(/^(Curso\s*\d+)\.?\s+(.*)$/i);
+  return m ? [m[1], m[2]] : [null, nombre];
+};
+
+/* ---------- Banner "Mi IINICIA": saludo + resumen sobre la foto ---------- */
+function HeroBanner({ linea, nombre, stats }) {
   const [foto, setFoto] = useState(false);
 
   useEffect(() => {
@@ -31,12 +34,21 @@ function HeroBanner() {
       style={foto ? { '--foto': `url(${FOTO_CAMPUS})` } : undefined}
     >
       <div className="hero-banner__text">
-        <h1>Mi <span>IINICIA</span></h1>
-        <p>Tu panel personal con tu actividad y tu avance.</p>
-        <span className="hero-banner__bar" />
+        {linea && <p className="hero-banner__line">{linea}</p>}
+        <h1>Hola, {nombre}</h1>
+        {stats.length > 0 && (
+          <dl className="hero-banner__stats">
+            {stats.map((s) => (
+              <div key={s.etiqueta} className={s.tono ? `is-${s.tono}` : ''}>
+                <dt>{s.etiqueta}</dt>
+                <dd>{s.valor}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
       </div>
 
-      {/* Motivo del infinito: la marca del instituto */}
+      {/* Motivo del infinito: la marca del instituto (se oculta cuando hay foto) */}
       <svg className="hero-banner__art" viewBox="0 0 560 200" fill="none" aria-hidden="true">
         <defs>
           <linearGradient id="bn-g" x1="0" y1="0" x2="1" y2="1">
@@ -192,40 +204,46 @@ export default function Dashboard({ onNavigate }) {
 
   const nombre = profile?.nombre || 'bienvenido';
   const rolLabel = rol ? ROLES[rol]?.label : '';
+  const linea = [rolLabel, profile?.programa].filter(Boolean).join(' de ');
 
-  /* ---------- Tarjetas de resumen según el rol ---------- */
+  /* ---------- Promedio (solo calificaciones numéricas) ---------- */
+  const numeros = mats.map((m) => parseFloat(grades[m.id])).filter((n) => !Number.isNaN(n));
+  const promedio = numeros.length
+    ? (numeros.reduce((a, b) => a + b, 0) / numeros.length).toFixed(2)
+    : '—';
+
+  /* ---------- Tarjetas de resumen según el rol (staff y aspirante) ---------- */
   let tarjetas = [];
-  if (esAlumno) {
+  if (esAspirante) {
     tarjetas = [
-      { valor: mats.length, etiqueta: 'Cursos matriculados', icono: 'cap' },
-      {
-        valor: profile?.moodle_user_id ? 'Vinculada' : 'Pendiente',
-        etiqueta: 'Cuenta en Moodle',
-        icono: 'layers',
-        tono: profile?.moodle_user_id ? 'verde' : 'ambar',
-        texto: true,
-      },
-      { valor: profile?.programa || 'Sin asignar', etiqueta: 'Programa', icono: 'book', tono: 'violeta', texto: true },
-    ];
-  } else if (esAspirante) {
-    tarjetas = [
-      { valor: estado || '—', etiqueta: 'Estado de tu solicitud', icono: 'clock', tono: estado === 'Activo' ? 'verde' : 'ambar', texto: true },
-      { valor: profile?.programa || 'Sin asignar', etiqueta: 'Programa', icono: 'book', tono: 'violeta', texto: true },
+      { valor: estado || '—', etiqueta: 'estado de tu solicitud', tono: estado === 'Activo' ? 'ok' : 'warn' },
     ];
   } else if (esStaff) {
     tarjetas = [
-      { valor: stats.usuarios, etiqueta: 'Usuarios en tu ámbito', icono: 'users' },
-      { valor: stats.pendientes, etiqueta: 'Pendientes de autorización', icono: 'clock', tono: 'ambar' },
+      { valor: stats.usuarios, etiqueta: 'usuarios en tu ámbito' },
+      { valor: stats.pendientes, etiqueta: 'pendientes de autorización', tono: stats.pendientes > 0 ? 'warn' : undefined },
     ];
-    if (rol !== 'soporte') tarjetas.push({ valor: stats.cursos, etiqueta: 'Cursos en tu ámbito', icono: 'cap', tono: 'verde' });
+    if (rol !== 'soporte') tarjetas.push({ valor: stats.cursos, etiqueta: 'cursos en tu ámbito' });
     if (esAdmin) {
       tarjetas.push({
         valor: stats.errores,
-        etiqueta: 'Matrículas con error',
-        icono: 'alert',
-        tono: stats.errores > 0 ? 'rojo' : 'violeta',
+        etiqueta: 'matrículas con error',
+        tono: stats.errores > 0 ? 'bad' : undefined,
       });
     }
+  }
+
+  /* ---------- Resumen que va dentro del banner ---------- */
+  let resumen = tarjetas;
+  if (esAlumno) {
+    resumen = [
+      { valor: mats.length, etiqueta: mats.length === 1 ? 'curso activo' : 'cursos activos' },
+      ...(rol === 'estudiante' ? [{ valor: promedio, etiqueta: 'promedio' }] : []),
+      { valor: estado || '—', etiqueta: 'estado', tono: estado === 'Activo' ? 'ok' : 'warn' },
+      { valor: profile?.moodle_user_id ? 'Vinculada' : 'Pendiente', etiqueta: 'cuenta Moodle' },
+    ];
+  } else if (esStaff) {
+    resumen = [...tarjetas, { valor: estado || '—', etiqueta: 'estado', tono: estado === 'Activo' ? 'ok' : 'warn' }];
   }
 
   /* ---------- Pasos de admisión (aspirante) ---------- */
@@ -239,39 +257,10 @@ export default function Dashboard({ onNavigate }) {
 
   return (
     <div className="dash">
-      <HeroBanner />
+      <HeroBanner linea={linea} nombre={nombre} stats={loading ? [] : resumen} />
 
       {err && <div className="alert alert--error">{err}</div>}
-
-      {/* ---------- Saludo + resumen ---------- */}
-      <section className="panel panel--greeting">
-        <div className="dash-head">
-          <div>
-            <h2>Hola, {nombre}</h2>
-            <p>
-              {rolLabel}
-              {profile?.programa ? ` · ${profile.programa}` : ''}
-            </p>
-          </div>
-          <span className={`status ${claseEstado(estado)}`}><i /> {estado || '—'}</span>
-        </div>
-
-        {loading ? (
-          <div className="empty">Cargando tu panel…</div>
-        ) : (
-          <div className="stat-grid">
-            {tarjetas.map((t) => (
-              <div className={`stat ${t.tono ? `stat--${t.tono}` : ''} ${t.texto ? 'stat--text' : ''}`} key={t.etiqueta}>
-                <span className="stat__icon"><Icon name={t.icono} /></span>
-                <div>
-                  <strong>{t.valor}</strong>
-                  <span className="stat__label">{t.etiqueta}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
+      {loading && <div className="empty">Cargando tu panel…</div>}
 
       {!loading && (
         <>
@@ -280,7 +269,7 @@ export default function Dashboard({ onNavigate }) {
             <section className="panel">
               <div className="panel__head">
                 <span className="panel__icon"><Icon name="cap" /></span>
-                <h3>Mis cursos</h3>
+                <h3>{rol === 'estudiante' ? 'Boleta del periodo' : 'Mis cursos'}</h3>
                 {can('courses') && mats.length > 3 && (
                   <button className="panel__more" onClick={() => ir('courses')}>
                     Ver todos <Icon name="arrow" />
@@ -293,31 +282,58 @@ export default function Dashboard({ onNavigate }) {
                   <p>Todavía no tienes cursos asignados. Tu acceso depende de una matrícula autorizada.</p>
                 </div>
               ) : rol === 'estudiante' ? (
-                <div className="table-wrap">
-                  <table className="table table--compact">
-                    <thead>
-                      <tr>
-                        <th>Curso</th>
-                        <th>Calificación</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {mats.slice(0, 3).map((m) => (
-                        <tr key={m.id}>
-                          <td className="who">
-                            <strong>{m.curso?.nombre}</strong>
-                            <small>{m.curso?.programa || 'Sin programa'}</small>
-                          </td>
-                          <td>
-                            <span className="badge">
-                              {grades[m.id] === undefined || grades[m.id] === 'cargando' ? 'Cargando…' : grades[m.id]}
-                            </span>
-                          </td>
+                <>
+                  <div className="boleta-wrap">
+                    <table className="boleta">
+                      <thead>
+                        <tr>
+                          <th>Curso</th>
+                          <th className="boleta__scale-h">Escala de 0 a 10</th>
+                          <th className="num">Calificación</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody>
+                        {mats.slice(0, 3).map((m) => {
+                          const [codigo, titulo] = partirNombre(m.curso?.nombre);
+                          const g = grades[m.id];
+                          const n = parseFloat(g);
+                          const tieneNum = !Number.isNaN(n);
+                          const listo = MOODLE_URL && m.curso?.moodle_course_id && m.moodle_estado === 'Sincronizada';
+                          return (
+                            <tr key={m.id}>
+                              <td>
+                                {codigo && <span className="boleta__code">{codigo}</span>}
+                                <strong>{titulo}</strong>
+                                {listo ? (
+                                  <button className="link-inline boleta__go" onClick={() => entrarAlCampus(m.id)}>
+                                    Entrar al curso
+                                  </button>
+                                ) : (
+                                  <small>Acceso en proceso</small>
+                                )}
+                              </td>
+                              <td className="boleta__scale">
+                                <span className="boleta__bar">
+                                  <b style={{ width: tieneNum ? `${Math.min(n, 10) * 10}%` : 0 }} />
+                                </span>
+                              </td>
+                              <td className="num">
+                                {tieneNum ? (
+                                  <span className="boleta__grade">{g}</span>
+                                ) : (
+                                  <span className="badge">
+                                    {g === undefined || g === 'cargando' ? 'Cargando…' : g}
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="hint">Calificaciones tomadas de tu campus Moodle.</p>
+                </>
               ) : (
                 <div className="course-grid">
                   {mats.slice(0, 3).map((m) => (

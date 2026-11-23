@@ -863,3 +863,37 @@ h1, h2, h3 { font-family: 'Poppins', sans-serif; font-weight: 800; }
 @media (max-width: 760px) {
   .hero::before { top: -230px; border-bottom-right-radius: 60px; }
 }
+/* ================= BANNER MI IINICIA CON SALUDO Y RESUMEN ================= */
+.hero-banner { min-height: 300px; padding: 44px 52px; align-items: flex-end; border-radius: 28px 28px 110px 28px; }
+.hero-banner p.hero-banner__line { margin: 0 0 6px; max-width: none; font-size: 15px; color: #7dd3fc; }
+.hero-banner h1 { margin: 0; }
+.hero-banner__stats { display: flex; flex-wrap: wrap; gap: 18px 44px; margin: 24px 0 0; }
+.hero-banner__stats > div { display: flex; flex-direction: column-reverse; }
+.hero-banner__stats dt { margin-top: 2px; font-size: 14px; color: #cbd5e1; }
+.hero-banner__stats dd { margin: 0; font-size: 1.75rem; font-weight: 700; line-height: 1.2; color: #fff; font-variant-numeric: tabular-nums; }
+.hero-banner__stats .is-ok dd { color: #86efac; }
+.hero-banner__stats .is-warn dd { color: #fcd34d; }
+.hero-banner__stats .is-bad dd { color: #fca5a5; }
+
+/* ================= BOLETA (calificaciones del estudiante) ================= */
+.boleta-wrap { overflow-x: auto; }
+.boleta { width: 100%; border-collapse: collapse; }
+.boleta th { padding: 0 0 12px; text-align: left; font-size: 12.5px; font-weight: 600; color: var(--texto-suave); }
+.boleta td { padding: 20px 0; border-top: 1px solid var(--linea); vertical-align: middle; }
+.boleta th.num, .boleta td.num { text-align: right; }
+.boleta__code { display: block; font-size: 13px; color: var(--texto-suave); }
+.boleta td strong { display: block; margin: 2px 0 6px; font-size: 16.5px; color: var(--oscuro); }
+.boleta td small { font-size: 13px; color: var(--texto-suave); }
+.boleta__go { font-size: 13px; color: var(--azul-fuerte); }
+.boleta td.boleta__scale { width: 36%; padding: 20px 28px 20px 24px; }
+.boleta__bar { display: block; height: 8px; border-radius: 99px; background: var(--linea); overflow: hidden; }
+.boleta__bar b { display: block; height: 100%; border-radius: 99px; background: var(--azul-fuerte); }
+.boleta__grade { font-size: 2rem; font-weight: 700; color: var(--oscuro); font-variant-numeric: tabular-nums; }
+
+@media (max-width: 760px) {
+  .hero-banner { padding: 28px 24px; border-radius: 24px 24px 60px 24px; }
+  .hero-banner__stats { gap: 14px 28px; }
+  .hero-banner__stats dd { font-size: 1.35rem; }
+  .boleta th.boleta__scale-h, .boleta td.boleta__scale { display: none; }
+  .boleta__grade { font-size: 1.5rem; }
+}
