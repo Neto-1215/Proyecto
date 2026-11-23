@@ -907,3 +907,11 @@ h1, h2, h3 { font-family: 'Poppins', sans-serif; font-weight: 800; }
   .hero-banner__stats dt { font-size: 15px; }
   .hero-banner__stats dd { font-size: 2.1rem; }
 }
+
+/* Banner de la vista anterior (superadmin): tamaño original */
+.hero-banner.hero-banner--clasico { min-height: 200px; padding: 38px 46px; border-radius: 28px; align-items: center; }
+.hero-banner--clasico h1 { margin: 0 0 10px; font-size: clamp(2.1rem, 4.4vw, 3.4rem); letter-spacing: normal; }
+
+@media (max-width: 760px) {
+  .hero-banner.hero-banner--clasico { padding: 30px 28px; }
+}

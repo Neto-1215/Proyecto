@@ -10,6 +10,9 @@ const MOODLE_URL = process.env.REACT_APP_MOODLE_URL;
 // Foto opcional del banner: colócala en public/campus.jpg. Si no existe, se muestra la ilustración.
 const FOTO_CAMPUS = `${process.env.PUBLIC_URL || ''}/campus.jpg`;
 
+const claseEstado = (e) =>
+  e === 'Activo' ? 'status--ok' : e === 'Suspendido' ? 'status--bad' : 'status--warn';
+
 const fecha = (iso) => (iso ? new Date(iso).toLocaleDateString('es-MX') : '—');
 
 // "Curso 2. Desarrollo Web con React" -> ["Curso 2", "Desarrollo Web con React"]
@@ -18,8 +21,9 @@ const partirNombre = (nombre = '') => {
   return m ? [m[1], m[2]] : [null, nombre];
 };
 
-/* ---------- Banner "Mi IINICIA": saludo + resumen sobre la foto ---------- */
-function HeroBanner({ linea, nombre, stats }) {
+/* ---------- Banner "Mi IINICIA" ----------
+   clasico = vista anterior (solo título); si no, saludo + resumen sobre la foto */
+function HeroBanner({ linea, nombre, stats, clasico }) {
   const [foto, setFoto] = useState(false);
 
   useEffect(() => {
@@ -30,23 +34,31 @@ function HeroBanner({ linea, nombre, stats }) {
 
   return (
     <section
-      className={`hero-banner ${foto ? 'has-photo' : ''}`}
+      className={`hero-banner ${clasico ? 'hero-banner--clasico' : ''} ${foto ? 'has-photo' : ''}`}
       style={foto ? { '--foto': `url(${FOTO_CAMPUS})` } : undefined}
     >
-      <div className="hero-banner__text">
-        {linea && <p className="hero-banner__line">{linea}</p>}
-        <h1>Hola, {nombre}</h1>
-        {stats.length > 0 && (
-          <dl className="hero-banner__stats">
-            {stats.map((s) => (
-              <div key={s.etiqueta} className={s.tono ? `is-${s.tono}` : ''}>
-                <dt>{s.etiqueta}</dt>
-                <dd>{s.valor}</dd>
-              </div>
-            ))}
-          </dl>
-        )}
-      </div>
+      {clasico ? (
+        <div className="hero-banner__text">
+          <h1>Mi <span>IINICIA</span></h1>
+          <p>Tu panel personal con tu actividad y tu avance.</p>
+          <span className="hero-banner__bar" />
+        </div>
+      ) : (
+        <div className="hero-banner__text">
+          {linea && <p className="hero-banner__line">{linea}</p>}
+          <h1>Hola, {nombre}</h1>
+          {stats.length > 0 && (
+            <dl className="hero-banner__stats">
+              {stats.map((s) => (
+                <div key={s.etiqueta} className={s.tono ? `is-${s.tono}` : ''}>
+                  <dt>{s.etiqueta}</dt>
+                  <dd>{s.valor}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+        </div>
+      )}
 
       {/* Motivo del infinito: la marca del instituto (se oculta cuando hay foto) */}
       <svg className="hero-banner__art" viewBox="0 0 560 200" fill="none" aria-hidden="true">
@@ -246,6 +258,20 @@ export default function Dashboard({ onNavigate }) {
     resumen = [...tarjetas, { valor: estado || '—', etiqueta: 'estado', tono: estado === 'Activo' ? 'ok' : 'warn' }];
   }
 
+  /* ---------- Vista anterior: solo para el superadministrador ---------- */
+  const vistaClasica = rol === 'superadmin';
+  const tarjetasClasicas = [
+    { valor: stats.usuarios, etiqueta: 'Usuarios en tu ámbito', icono: 'users' },
+    { valor: stats.pendientes, etiqueta: 'Pendientes de autorización', icono: 'clock', tono: 'ambar' },
+    { valor: stats.cursos, etiqueta: 'Cursos en tu ámbito', icono: 'cap', tono: 'verde' },
+    {
+      valor: stats.errores,
+      etiqueta: 'Matrículas con error',
+      icono: 'alert',
+      tono: stats.errores > 0 ? 'rojo' : 'violeta',
+    },
+  ];
+
   /* ---------- Pasos de admisión (aspirante) ---------- */
   const pasos = [
     { t: 'Registro de cuenta', d: 'Tu cuenta fue creada correctamente.', hecho: true },
@@ -257,10 +283,43 @@ export default function Dashboard({ onNavigate }) {
 
   return (
     <div className="dash">
-      <HeroBanner linea={linea} nombre={nombre} stats={loading ? [] : resumen} />
+      <HeroBanner clasico={vistaClasica} linea={linea} nombre={nombre} stats={loading ? [] : resumen} />
 
       {err && <div className="alert alert--error">{err}</div>}
-      {loading && <div className="empty">Cargando tu panel…</div>}
+
+      {vistaClasica ? (
+        /* ---------- Saludo + resumen (vista anterior del superadmin) ---------- */
+        <section className="panel panel--greeting">
+          <div className="dash-head">
+            <div>
+              <h2>Hola, {nombre}</h2>
+              <p>
+                {rolLabel}
+                {profile?.programa ? ` · ${profile.programa}` : ''}
+              </p>
+            </div>
+            <span className={`status ${claseEstado(estado)}`}><i /> {estado || '—'}</span>
+          </div>
+
+          {loading ? (
+            <div className="empty">Cargando tu panel…</div>
+          ) : (
+            <div className="stat-grid">
+              {tarjetasClasicas.map((t) => (
+                <div className={`stat ${t.tono ? `stat--${t.tono}` : ''}`} key={t.etiqueta}>
+                  <span className="stat__icon"><Icon name={t.icono} /></span>
+                  <div>
+                    <strong>{t.valor}</strong>
+                    <span className="stat__label">{t.etiqueta}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      ) : (
+        loading && <div className="empty">Cargando tu panel…</div>
+      )}
 
       {!loading && (
         <>
