@@ -29,6 +29,11 @@ app.set('trust proxy', Number.isInteger(Number(TRUST_PROXY)) ? Number(TRUST_PROX
 app.use(helmet());
 app.use(cors({ origin: FRONTEND_URL, methods: ['GET', 'POST', 'PATCH', 'DELETE'], allowedHeaders: ['Content-Type', 'Authorization'] }));
 app.use(express.json({ limit: '20kb' }));
+// La API devuelve datos personales: que ningún navegador ni proxy los guarde en caché
+app.use('/api', (req, res, next) => {
+  res.set('Cache-Control', 'no-store');
+  next();
+});
 
 // Límite general por IP y uno más estricto para acciones que escriben o llaman a Moodle
 app.use(rateLimit({ windowMs: 60_000, limit: 120, standardHeaders: true, legacyHeaders: false }));
@@ -172,9 +177,11 @@ async function sincronizarMatricula(m) {
     await sb.from('matriculas').update({ moodle_estado: 'Sincronizada', moodle_error: null }).eq('id', m.id);
     return moodleId;
   } catch (e) {
+    // El detalle va al log del servidor; en la BD (legible por el alumno) solo un texto genérico
+    console.error('sincronizarMatricula:', e.message);
     await sb
       .from('matriculas')
-      .update({ moodle_estado: 'Error', moodle_error: String(e.message).slice(0, 300) })
+      .update({ moodle_estado: 'Error', moodle_error: 'Falló la sincronización con Moodle. Revisa el log del servidor.' })
       .eq('id', m.id);
     throw new HttpError(502, 'No se pudo sincronizar con Moodle. Revisa la conexión e inténtalo de nuevo.');
   }
@@ -459,8 +466,8 @@ app.patch('/api/users/:id', auth, requireRol('superadmin', 'administrador', 'coo
     }
   } else {
     // El Coordinador solo gestiona solicitudes pendientes dentro de su ámbito
-    const enAmbito =
-      !Array.isArray(actor.ambito) || actor.ambito.length === 0 || actor.ambito.includes(objetivo.programa);
+    // Sin ámbito asignado no se concede acceso (fail-closed): el Superadmin debe asignarlo primero
+    const enAmbito = Array.isArray(actor.ambito) && actor.ambito.includes(objetivo.programa);
     if (objetivo.estado !== 'Pendiente' || !enAmbito) {
       throw new HttpError(403, 'No tienes permiso sobre este usuario.');
     }
@@ -672,10 +679,13 @@ app.get('/api/asistente/contexto', ah(async (req, res) => {
 // Rutas inexistentes
 app.use((req, res) => res.status(404).json({ error: 'No encontrado.' }));
 
-// Rutas inexistentes
-app.use((req, res) => res.status(404).json({ error: 'No encontrado.' }));
-
-// Rutas inexistentes
-app.use((req, res) => res.status(404).json({ error: 'No encontrado.' }));
+// Errores no capturados (JSON malformado, body demasiado grande, CORS...): nunca se filtra el stack
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  if (err?.type === 'entity.too.large') return res.status(413).json({ error: 'Solicitud demasiado grande.' });
+  if (err?.type === 'entity.parse.failed') return res.status(400).json({ error: 'JSON inválido.' });
+  console.error(`${req.method} ${req.path}:`, err);
+  res.status(500).json({ error: 'Error interno del servidor.' });
+});
 
 app.listen(PORT, () => console.log(`Backend IINICIA escuchando en http://localhost:${PORT}`));
